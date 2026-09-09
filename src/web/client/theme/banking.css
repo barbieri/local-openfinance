@@ -1,0 +1,32 @@
+:root {
+  --background: hsl(40 20% 98%);
+  --foreground: hsl(160 30% 12%);
+  --primary: hsl(160 45% 28%);
+  --primary-foreground: hsl(40 20% 98%);
+  --secondary: hsl(160 20% 92%);
+  --secondary-foreground: hsl(160 30% 12%);
+  --muted: hsl(40 15% 92%);
+  --muted-foreground: hsl(160 10% 40%);
+  --accent: hsl(160 35% 90%);
+  --accent-foreground: hsl(160 45% 20%);
+  --destructive: hsl(0 55% 45%);
+  --destructive-foreground: hsl(0 0% 100%);
+  --border: hsl(160 15% 85%);
+  --input: hsl(160 15% 85%);
+  --ring: hsl(160 45% 28%);
+  --credit: hsl(145 45% 35%);
+  --debit: hsl(0 55% 45%);
+  --radius: 0.375rem;
+}
+
+.dark {
+  --background: hsl(160 25% 8%);
+  --foreground: hsl(40 20% 96%);
+  --primary: hsl(160 40% 45%);
+  --primary-foreground: hsl(160 25% 8%);
+  --muted: hsl(160 20% 15%);
+  --muted-foreground: hsl(160 10% 65%);
+  --border: hsl(160 15% 22%);
+  --credit: hsl(145 40% 50%);
+  --debit: hsl(0 50% 55%);
+}

@@ -1,0 +1,35 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-openfinance.dev/schemas/openfinance-category-defaults.schema.json",
+  "title": "Open Finance category presentation defaults",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "categories"],
+  "properties": {
+    "version": {
+      "description": "Document version for forward-compatible migrations.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "categories": {
+      "description": "Presentation defaults keyed by upstream English category name (categories.name). Omit icon or color to inherit from parent at display time.",
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "icon": {
+            "description": "Material Design icon id from react-icons/md (Md prefix).",
+            "type": "string",
+            "pattern": "^Md[A-Z][A-Za-z0-9]+$"
+          },
+          "color": {
+            "description": "CSS hex color for category chips and tree rows.",
+            "type": "string",
+            "pattern": "^#[0-9A-Fa-f]{6}$"
+          }
+        }
+      }
+    }
+  }
+}

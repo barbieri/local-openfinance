@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.mcp.local-openfinance-daily</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/launchctl</string>
+    <string>kickstart</string>
+    <string>-k</string>
+    <string>gui/__UID__/ai.mcp.local-openfinance</string>
+  </array>
+  <key>StartCalendarInterval</key>
+  <dict>
+    <key>Hour</key>
+    <integer>5</integer>
+    <key>Minute</key>
+    <integer>0</integer>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/local-openfinance-daily.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/local-openfinance-daily.err.log</string>
+</dict>
+</plist>

@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>local-openfinance — Web UI mockups</title>
+  <style>
+    :root {
+      --background: hsl(40 20% 98%);
+      --foreground: hsl(160 30% 12%);
+      --primary: hsl(160 45% 28%);
+      --primary-foreground: hsl(40 20% 98%);
+      --muted: hsl(40 15% 92%);
+      --muted-foreground: hsl(160 10% 40%);
+      --border: hsl(160 15% 85%);
+      --credit: hsl(145 45% 35%);
+      --debit: hsl(0 55% 45%);
+      --radius: 0.375rem;
+    }
+    * { box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--background);
+      color: var(--foreground);
+      margin: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    header {
+      border-bottom: 1px solid var(--border);
+      padding: 0.75rem 1.5rem;
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      background: var(--primary);
+      color: var(--primary-foreground);
+    }
+    nav { display: flex; gap: 0.25rem; flex-wrap: wrap; }
+    nav button {
+      background: transparent;
+      border: 1px solid rgba(255,255,255,0.3);
+      color: inherit;
+      padding: 0.35rem 0.75rem;
+      border-radius: var(--radius);
+      cursor: pointer;
+      font-size: 0.875rem;
+    }
+    nav button.active { background: rgba(255,255,255,0.2); font-weight: 600; }
+    main { padding: 1rem 1.5rem; }
+    .toolbar {
+      display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 0.75rem;
+      padding: 0.5rem; background: var(--muted); border-radius: var(--radius);
+    }
+    .toolbar select, .toolbar input { font-size: 0.875rem; padding: 0.25rem 0.5rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.8125rem; }
+    th, td { border-bottom: 1px solid var(--border); padding: 0.4rem 0.6rem; text-align: left; }
+    th { background: var(--muted); position: sticky; top: 0; font-weight: 600; }
+    td.amount { text-align: right; font-variant-numeric: tabular-nums; }
+    td.credit { color: var(--credit); }
+    td.debit { color: var(--debit); }
+    .badge { display: inline-block; padding: 0.1rem 0.4rem; border-radius: 999px; font-size: 0.75rem; background: var(--muted); }
+    .badge.unclassified { border: 1px dashed var(--border); cursor: pointer; }
+    .toast-stack { position: fixed; bottom: 1rem; right: 1rem; display: flex; flex-direction: column-reverse; gap: 0.5rem; }
+    .toast { padding: 0.75rem 1rem; border-radius: var(--radius); background: var(--foreground); color: var(--background); font-size: 0.875rem; box-shadow: 0 4px 12px rgba(0,0,0,0.15); }
+    .panel { display: none; }
+    .panel.active { display: block; }
+    .url-hint { font-size: 0.75rem; opacity: 0.8; margin-left: auto; font-family: monospace; }
+    .split { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+    @media (max-width: 900px) { .split { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>
+    <strong>local-openfinance</strong>
+    <nav id="tabs"></nav>
+    <span class="url-hint">#s=N4Igb…</span>
+  </header>
+  <main>
+    <section class="panel active" data-tab="transactions">
+      <div class="toolbar">
+        <select><option>Today</option><option>This week</option><option>Past week</option><option>This month</option></select>
+        <select><option>All accounts</option></select>
+        <input type="search" placeholder="Search merchant / description (FTS)" />
+        <button>Detect transfers</button>
+        <button>Export CSV</button>
+        <button>Export JSON</button>
+      </div>
+      <table>
+        <thead><tr><th>Date</th><th>Account</th><th>Description</th><th>Labels</th><th>Amount</th><th>⇄</th></tr></thead>
+        <tbody>
+          <tr><td>2026-06-10</td><td>Checking</td><td>PIX · Mercado Livre</td><td><span class="badge">Shopping &gt; Online</span></td><td class="amount debit">- R$ 129,90</td><td></td></tr>
+          <tr><td>2026-06-10</td><td>Salary</td><td>Transferência recebida</td><td><span class="badge unclassified">Classify…</span></td><td class="amount credit">+ R$ 8.500,00</td><td>⇄</td></tr>
+        </tbody>
+      </table>
+    </section>
+    <section class="panel" data-tab="credit-cards">
+      <div class="split">
+        <div>
+          <h3>Cards</h3>
+          <table><thead><tr><th>Name</th><th>Limit</th><th>Balance</th></tr></thead>
+          <tbody><tr><td>Visa Infinite (1234)</td><td class="amount">R$ 25.000,00</td><td class="amount debit">R$ 3.420,15</td></tr></tbody></table>
+        </div>
+        <div><h3>Bills &amp; transactions</h3><p class="muted">Select a card</p></div>
+      </div>
+    </section>
+    <section class="panel" data-tab="investments"><table><thead><tr><th>Name</th><th>Type</th><th>Balance</th><th>Status</th></tr></thead>
+      <tbody><tr><td>CDB Liquidez</td><td>FIXED_INCOME</td><td class="amount">R$ 42.150,00</td><td>ACTIVE</td></tr></tbody></table></section>
+    <section class="panel" data-tab="loans"><table><thead><tr><th>Name</th><th>Contract</th><th>Balance</th><th>Due</th></tr></thead>
+      <tbody><tr><td>Vehicle loan</td><td class="amount">R$ 85.000,00</td><td class="amount">R$ 62.400,00</td><td>2030-04-15</td></tr></tbody></table></section>
+    <section class="panel" data-tab="connections"><table><thead><tr><th>Display name</th><th>Connector</th><th>Status</th><th></th></tr></thead>
+      <tbody><tr><td>Personal · Itaú</td><td>Itaú</td><td>UPDATED</td><td><button>Label</button></td></tr></tbody></table></section>
+    <section class="panel" data-tab="accounts"><table><thead><tr><th>Display name</th><th>Type</th><th>Balance</th><th>Branch / Account</th><th></th></tr></thead>
+      <tbody><tr><td>Checking</td><td>BANK · CHECKING</td><td class="amount">R$ 12.340,50</td><td>1234 / 56789-0</td><td><button>Label</button> <button>Link</button></td></tr></tbody></table></section>
+    <section class="panel" data-tab="categories"><table><thead><tr><th>Path</th><th>Custom name</th><th>Icon</th><th>Color</th></tr></thead>
+      <tbody><tr><td>Shopping &gt; Artigos infantis</td><td>—</td><td>🛒</td><td><span style="display:inline-block;width:1rem;height:1rem;background:#3d8b6a;border-radius:2px"></span></td></tr></tbody></table></section>
+    <section class="panel" data-tab="sync">
+      <button style="padding:0.5rem 1rem;background:var(--primary);color:var(--primary-foreground);border:none;border-radius:var(--radius);cursor:pointer">Start sync</button>
+      <pre style="margin-top:1rem;background:var(--muted);padding:1rem;border-radius:var(--radius);font-size:0.8125rem">✓ Itaú: 3 accounts, 142 transactions
+Connections · Force sync · Categories · Accounts 2/3 (67%)</pre>
+    </section>
+  </main>
+  <div class="toast-stack"><div class="toast">Label saved</div></div>
+  <script>
+    const tabs = ['transactions','credit-cards','investments','loans','connections','accounts','categories','sync'];
+    const labels = ['Transactions','Credit Cards','Investments','Loans','Connections','Accounts','Categories','Sync'];
+    const nav = document.getElementById('tabs');
+    tabs.forEach((id, i) => {
+      const b = document.createElement('button');
+      b.textContent = labels[i];
+      b.dataset.tab = id;
+      if (i === 0) b.classList.add('active');
+      b.onclick = () => {
+        nav.querySelectorAll('button').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+        b.classList.add('active');
+        document.querySelector(`[data-tab="${id}"]`).classList.add('active');
+      };
+      nav.appendChild(b);
+    });
+  </script>
+</body>
+</html>

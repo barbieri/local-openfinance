@@ -1,0 +1,54 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-credit: var(--credit);
+  --color-debit: var(--debit);
+  --color-card: var(--background);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  -webkit-font-smoothing: antialiased;
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
+
+[data-sonner-toaster] {
+  z-index: 100;
+}
+
+[data-sonner-toaster][data-sonner-theme="light"] {
+  --success-bg: hsl(145 55% 94%);
+  --success-border: hsl(145 45% 78%);
+  --success-text: hsl(145 45% 28%);
+
+  --error-bg: hsl(0 85% 96%);
+  --error-border: hsl(0 65% 86%);
+  --error-text: hsl(0 55% 38%);
+}
+
+[data-rich-colors="true"][data-sonner-toast][data-type="success"] [data-description],
+[data-rich-colors="true"][data-sonner-toast][data-type="error"] [data-description] {
+  opacity: 0.92;
+}

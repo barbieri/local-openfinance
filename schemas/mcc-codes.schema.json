@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://local-openfinance.dev/schemas/mcc-codes.schema.json",
+  "title": "ISO 18245 Merchant Category Codes",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "source", "codes"],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "source": {
+      "type": "string",
+      "minLength": 1
+    },
+    "sourceUrl": {
+      "type": "string"
+    },
+    "importedAt": {
+      "type": "string"
+    },
+    "codes": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["en", "pt"],
+        "properties": {
+          "en": { "type": "string", "minLength": 1 },
+          "pt": { "type": "string", "minLength": 1 }
+        }
+      }
+    }
+  }
+}

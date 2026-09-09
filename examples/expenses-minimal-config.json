@@ -1,0 +1,51 @@
+{
+  "report": {},
+  "reports": [
+    {
+      "id": "weekly",
+      "name": "Weekly",
+      "schedule": { "kind": "weekly", "weekday": "monday", "time": "08:00" },
+      "window": { "kind": "last-complete-week" },
+      "prompts": ["@DEFAULT_BASE_INSTRUCTIONS@", "expenses/weekly.md"]
+    },
+    {
+      "id": "monthly",
+      "name": "Monthly",
+      "schedule": { "kind": "monthly", "day": 8, "time": "08:00" },
+      "window": { "kind": "last-complete-month" },
+      "prompts": ["@DEFAULT_BASE_INSTRUCTIONS@", "expenses/monthly.md"]
+    }
+  ],
+  "model": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "maxOutputTokens": 8000,
+    "reasoningEffort": "low",
+    "pricing": { "input": 0.2, "cachedInput": 0.02, "output": 1.2 }
+  },
+  "storage": {
+    "databasePath": "tmp/openfinance.sqlite"
+  },
+  "annotation": {
+    "embedding": {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "pricing": { "input": 0.02 }
+    },
+    "classifier": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini"
+    }
+  },
+  "notify": {
+    "smtp": {
+      "host": "smtp.gmail.com",
+      "from": "you@example.com",
+      "to": "you@example.com",
+      "auth": {
+        "user": "you@example.com",
+        "passEnvVar": "SMTP_PASS"
+      }
+    }
+  }
+}

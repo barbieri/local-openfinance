@@ -1,0 +1,3 @@
+UPDATE transactions
+SET amount_in_account_currency_cents = amount_cents
+WHERE amount_in_account_currency_cents IS NULL;

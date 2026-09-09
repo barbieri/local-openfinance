@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>ai.mcp.local-openfinance-reports</string>
+  <key>WorkingDirectory</key>
+  <string>__CLONE__</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>LOG_LEVEL</key>
+    <string>info</string>
+  </dict>
+  <key>ProgramArguments</key>
+  <array>
+    <string>__NODE__</string>
+    <string>dist/bundle/local-openfinance.mjs</string>
+    <string>run</string>
+    <string>--config</string>
+    <string>__CONFIG__</string>
+    <string>--due</string>
+    <string>--send</string>
+  </array>
+  <key>StartInterval</key>
+  <integer>3600</integer>
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/local-openfinance-reports.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/local-openfinance-reports.err.log</string>
+</dict>
+</plist>

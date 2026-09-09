@@ -1,0 +1,495 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/barbieri/local-openfinance/schemas/config.schema.json",
+  "description": "Configuration for one local-openfinance report topic. The topic id is inferred from the config filename. Each file defines local SQLite storage, sync behavior, annotation helpers, shared report filters, and model settings.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["report", "model"],
+  "properties": {
+    "storage": {
+      "description": "Filesystem location for the local Open Finance SQLite database populated by sync.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "databasePath": {
+          "description": "Path to the local SQLite database populated by sync. When omitted, defaults to openfinance.sqlite beside the config file.",
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "sync": {
+      "description": "Optional rules controlling how the sync command talks to Banco MCP before reading local data.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "forceBeforeFetch": {
+          "description": "When true, call openfinance_force_sync for configured connections before incremental fetch.",
+          "type": "boolean"
+        },
+        "forceUpsert": {
+          "description": "When true, re-fetch and upsert all rows: skip no known ids, paginate full transaction and investment-transaction history, and refresh categories. Investments, accounts, loans, and bills always upsert.",
+          "type": "boolean"
+        },
+        "connections": {
+          "description": "Optional list of connection selectors (item_id, connector_id, or connector_name). When omitted, sync all connected banks returned by openfinance_list_connections.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "description": "One Banco MCP connection selector passed to list/sync endpoints.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "lookbackDays": {
+          "description": "Number of calendar days to overlap when resuming transaction fetch per account. Defaults to 7 when omitted.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "pageSize": {
+          "description": "Default page size for paginated Open Finance list endpoints. Defaults to 100 when omitted.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 500
+        }
+      }
+    },
+    "annotation": {
+      "description": "Optional embedding and classifier helpers used by the classify command to suggest categories for new entries.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "embedding": {
+          "description": "Embedding model settings for similarity search against manually classified entries.",
+          "$ref": "#/$defs/scoringModel"
+        },
+        "classifier": {
+          "description": "Optional classifier model that ranks candidate categories before the interactive wizard.",
+          "$ref": "#/$defs/scoringModel"
+        },
+        "similarityThreshold": {
+          "description": "Minimum cosine similarity (0-1) required to surface an embedding suggestion. Defaults to 0.82 when omitted.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "pushCategoriesUpstream": {
+          "description": "Ignored. Local classifications stay in SQLite and are not sent to Banco MCP.",
+          "type": "boolean"
+        }
+      }
+    },
+    "report": {
+      "description": "Shared filters for named reports. Each named report will define its own prompts.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "accountIds": {
+          "description": "Optional account uuid allow-list. When omitted, all synced accounts are eligible.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "description": "One Open Finance account uuid.",
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "includeUnannotated": {
+          "description": "When false, only entries with a local annotation are sent to the model. Defaults to true when omitted.",
+          "type": "boolean"
+        }
+      }
+    },
+    "reports": {
+      "description": "Ordered named reports. Each report owns its schedule, window, prompts, and optional filter or model overrides.",
+      "type": "array",
+      "default": [],
+      "items": {
+        "description": "One named report.",
+        "$ref": "#/$defs/report"
+      }
+    },
+    "web": {
+      "description": "Optional local web UI settings used when serving the app and when rendering links in reports.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "publicBaseUrl": {
+          "description": "Public origin for permalinks in emails and reports, such as a Tailscale Service URL. Do not include an access token. When omitted, links are hash-only.",
+          "type": "string",
+          "minLength": 1,
+          "format": "uri"
+        }
+      }
+    },
+    "intelligence": {
+      "description": "Optional thresholds for weekly intelligence briefings and report item filtering.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "suggestionConfidenceThreshold": {
+          "description": "Minimum score required to use a pending classification suggestion in report analysis. Defaults to 0.82 when omitted.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "minReportedItemAmountCents": {
+          "description": "Absolute amount in cents below which individual transactions are omitted from report prose and item lists. Totals and charts still include them. Defaults to 10000 (R$100.00).",
+          "type": "integer",
+          "minimum": 0
+        },
+        "rareLookbackYears": {
+          "description": "How many years of history to search when matching rare large events. Defaults to 3.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 10
+        }
+      }
+    },
+    "chatModel": {
+      "description": "Optional live-chat model. When omitted, the web chat uses `model`.",
+      "$ref": "#/$defs/analysisModel"
+    },
+    "notify": {
+      "description": "Optional outbound notification settings for report email and explicit sync suggestion digests.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "smtp": {
+          "description": "SMTP delivery for report email and explicit sync suggestion digests. Password is read from the environment variable named by auth.passEnvVar.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["host", "from", "to"],
+          "properties": {
+            "host": {
+              "description": "SMTP server hostname.",
+              "type": "string",
+              "minLength": 1
+            },
+            "port": {
+              "description": "SMTP port. Defaults to 587 when omitted.",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "secure": {
+              "description": "When true, use TLS from connection start. When false, require a STARTTLS upgrade before authentication or delivery. Defaults to false.",
+              "type": "boolean"
+            },
+            "from": {
+              "description": "Sender email address.",
+              "type": "string",
+              "minLength": 1,
+              "format": "email"
+            },
+            "to": {
+              "description": "Recipient email address or list of addresses.",
+              "oneOf": [
+                {
+                  "description": "Single recipient email address.",
+                  "type": "string",
+                  "minLength": 1,
+                  "format": "email"
+                },
+                {
+                  "description": "One or more recipient email addresses.",
+                  "type": "array",
+                  "minItems": 1,
+                  "items": {
+                    "description": "One recipient email address.",
+                    "type": "string",
+                    "minLength": 1,
+                    "format": "email"
+                  }
+                }
+              ]
+            },
+            "auth": {
+              "description": "Optional SMTP authentication. The password is never stored in the config file.",
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["user", "passEnvVar"],
+              "properties": {
+                "user": {
+                  "description": "SMTP username.",
+                  "type": "string",
+                  "minLength": 1
+                },
+                "passEnvVar": {
+                  "description": "Name of the environment variable that holds the SMTP password.",
+                  "type": "string",
+                  "minLength": 1
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "model": {
+      "description": "LLM provider and generation settings used for report analysis. Live chat uses chatModel when set, otherwise this model.",
+      "$ref": "#/$defs/analysisModel"
+    }
+  },
+  "$defs": {
+    "report": {
+      "description": "A scheduled named report.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "schedule", "window", "prompts"],
+      "properties": {
+        "id": {
+          "description": "Stable path-safe report id.",
+          "type": "string",
+          "pattern": "^[a-z0-9]+(?:-[a-z0-9]+)*$"
+        },
+        "name": { "description": "Report display name.", "type": "string", "minLength": 1 },
+        "schedule": {
+          "description": "Local schedule used by run --due.",
+          "$ref": "#/$defs/reportSchedule"
+        },
+        "window": {
+          "description": "Local date window for the report.",
+          "$ref": "#/$defs/reportWindow"
+        },
+        "prompts": {
+          "description": "Ordered prompt references resolved relative to the config.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "description": "One prompt reference.", "type": "string", "minLength": 1 }
+        },
+        "language": {
+          "description": "Supported locale used for report text, translations, dates, numbers, and charts. Defaults to pt-BR when omitted.",
+          "enum": ["en-US", "pt-BR"]
+        },
+        "send": { "description": "Delivery policy.", "enum": ["always", "alerts", "never"] },
+        "model": {
+          "description": "Optional report model override.",
+          "$ref": "#/$defs/analysisModel"
+        },
+        "agentBudget": {
+          "description": "Limits report-agent steps. Defaults are 8 analyst steps, 4 reviewer steps per round, and 2 reviewer rounds.",
+          "$ref": "#/$defs/reportAgentBudget"
+        },
+        "accountIds": {
+          "description": "Optional account override.",
+          "$ref": "#/$defs/reportFilters/properties/accountIds"
+        },
+        "includeUnannotated": { "description": "Optional annotation override.", "type": "boolean" }
+      }
+    },
+    "reportFilters": {
+      "description": "Report entry filters.",
+      "type": "object",
+      "properties": {
+        "accountIds": {
+          "description": "Account ids.",
+          "type": "array",
+          "minItems": 1,
+          "items": { "description": "One account id.", "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "reportSchedule": {
+      "description": "A report schedule.",
+      "oneOf": [
+        {
+          "description": "Daily schedule.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "time"],
+          "properties": {
+            "kind": { "description": "Schedule kind.", "const": "daily" },
+            "time": {
+              "description": "Local time HH:mm.",
+              "type": "string",
+              "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        },
+        {
+          "description": "Weekly schedule.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "weekday", "time"],
+          "properties": {
+            "kind": { "description": "Schedule kind.", "const": "weekly" },
+            "weekday": {
+              "description": "Weekday.",
+              "enum": ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+            },
+            "time": {
+              "description": "Local time HH:mm.",
+              "type": "string",
+              "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        },
+        {
+          "description": "Monthly schedule.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind", "day", "time"],
+          "properties": {
+            "kind": { "description": "Schedule kind.", "const": "monthly" },
+            "day": {
+              "description": "Local calendar day 1-28 or the last day of the month.",
+              "oneOf": [
+                {
+                  "description": "A fixed local calendar day from 1 through 28.",
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 28
+                },
+                {
+                  "description": "The last local calendar day of the month.",
+                  "const": "last"
+                }
+              ]
+            },
+            "time": {
+              "description": "Local time HH:mm.",
+              "type": "string",
+              "pattern": "^(?:[01][0-9]|2[0-3]):[0-5][0-9]$"
+            }
+          }
+        },
+        {
+          "description": "Manual schedule.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["kind"],
+          "properties": { "kind": { "description": "Schedule kind.", "const": "manual" } }
+        }
+      ]
+    },
+    "reportWindow": {
+      "description": "A report date window.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind"],
+      "properties": {
+        "kind": {
+          "description": "Window kind.",
+          "enum": ["last-complete-day", "last-complete-week", "last-complete-month"]
+        }
+      }
+    },
+    "analysisModel": {
+      "description": "LLM provider and generation settings used for report analysis or live chat.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {
+          "description": "Built-in AI SDK provider id such as openai, anthropic, google, xai, openrouter, opencode, openai-compatible, gateway, or ollama.",
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "description": "Provider-specific model name passed to the Vercel AI SDK provider factory.",
+          "type": "string",
+          "minLength": 1
+        },
+        "baseUrl": {
+          "description": "Optional provider base URL for analysis model providers that support custom endpoints, such as openai-compatible and ollama.",
+          "type": "string",
+          "minLength": 1
+        },
+        "temperature": {
+          "description": "Optional model sampling temperature. Omitted automatically for known reasoning model families.",
+          "type": "number",
+          "minimum": 0
+        },
+        "maxOutputTokens": {
+          "description": "Optional upper bound for generated output tokens.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "reasoningEffort": {
+          "description": "OpenAI reasoning effort. Valid only when provider is openai.",
+          "enum": ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
+        },
+        "pricing": {
+          "description": "USD per million tokens captured with generated usage.",
+          "$ref": "#/$defs/modelPricing"
+        }
+      }
+    },
+    "scoringModel": {
+      "description": "Embedding or classifier model configuration for annotation helpers.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["provider", "model"],
+      "properties": {
+        "provider": {
+          "description": "Built-in scoring helper provider id such as ollama, openai, openrouter, google, gateway, or openai-compatible.",
+          "type": "string",
+          "minLength": 1
+        },
+        "model": {
+          "description": "Provider-specific model name used for embeddings or classification.",
+          "type": "string",
+          "minLength": 1
+        },
+        "baseUrl": {
+          "description": "Optional provider base URL for scoring helpers that support custom endpoints.",
+          "type": "string",
+          "minLength": 1
+        },
+        "pricing": {
+          "description": "USD per million tokens captured with embedding usage.",
+          "$ref": "#/$defs/modelPricing"
+        }
+      }
+    },
+    "reportAgentBudget": {
+      "description": "Limits for report analyst and reviewer model-call loops. A taxonomy-policy cache miss may add one provider call outside these loops.",
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "analystMaxSteps": {
+          "description": "Maximum analyst model steps.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 16
+        },
+        "reviewerMaxSteps": {
+          "description": "Maximum model steps in each reviewer round.",
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 8
+        },
+        "reviewerRounds": {
+          "description": "Number of sequential reviewer rounds.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        }
+      }
+    },
+    "modelPricing": {
+      "description": "Token rates in US dollars per million tokens.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["input"],
+      "properties": {
+        "input": {
+          "description": "Input-token rate in US dollars per million tokens.",
+          "type": "number",
+          "minimum": 0
+        },
+        "cachedInput": {
+          "description": "Cached-input-token rate in US dollars per million tokens.",
+          "type": "number",
+          "minimum": 0
+        },
+        "output": {
+          "description": "Output-token rate in US dollars per million tokens.",
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,74 @@
+{
+  "report": {
+    "includeUnannotated": true
+  },
+  "reports": [
+    {
+      "id": "weekly",
+      "name": "Weekly",
+      "schedule": { "kind": "weekly", "weekday": "monday", "time": "08:00" },
+      "window": { "kind": "last-complete-week" },
+      "prompts": ["@DEFAULT_BASE_INSTRUCTIONS@", "expenses/weekly.md"],
+      "language": "pt-BR",
+      "send": "always",
+      "agentBudget": { "analystMaxSteps": 8, "reviewerMaxSteps": 4, "reviewerRounds": 2 }
+    },
+    {
+      "id": "monthly",
+      "name": "Monthly",
+      "schedule": { "kind": "monthly", "day": 8, "time": "08:00" },
+      "window": { "kind": "last-complete-month" },
+      "prompts": ["@DEFAULT_BASE_INSTRUCTIONS@", "expenses/monthly.md"],
+      "language": "pt-BR",
+      "send": "always",
+      "agentBudget": { "analystMaxSteps": 8, "reviewerMaxSteps": 4, "reviewerRounds": 2 }
+    }
+  ],
+  "model": {
+    "provider": "openai",
+    "model": "gpt-5.6-luna",
+    "maxOutputTokens": 8000,
+    "reasoningEffort": "low",
+    "pricing": { "input": 0.2, "cachedInput": 0.02, "output": 1.2 }
+  },
+  "storage": {
+    "databasePath": "tmp/openfinance.sqlite"
+  },
+  "sync": {
+    "forceBeforeFetch": false,
+    "forceUpsert": false,
+    "lookbackDays": 7,
+    "pageSize": 100
+  },
+  "annotation": {
+    "embedding": {
+      "provider": "openai",
+      "model": "text-embedding-3-small",
+      "pricing": { "input": 0.02 }
+    },
+    "classifier": {
+      "provider": "openai",
+      "model": "gpt-4.1-mini"
+    },
+    "similarityThreshold": 0.82,
+    "pushCategoriesUpstream": false
+  },
+  "intelligence": {
+    "suggestionConfidenceThreshold": 0.82,
+    "minReportedItemAmountCents": 10000,
+    "rareLookbackYears": 3
+  },
+  "notify": {
+    "smtp": {
+      "host": "smtp.gmail.com",
+      "port": 587,
+      "secure": false,
+      "from": "you@example.com",
+      "to": "you@example.com",
+      "auth": {
+        "user": "you@example.com",
+        "passEnvVar": "SMTP_PASS"
+      }
+    }
+  }
+}

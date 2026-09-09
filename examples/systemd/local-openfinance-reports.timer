@@ -1,0 +1,10 @@
+[Unit]
+Description=Check hourly for due local-openfinance reports
+
+[Timer]
+OnCalendar=hourly
+Persistent=true
+Unit=local-openfinance-reports.service
+
+[Install]
+WantedBy=timers.target

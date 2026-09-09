@@ -1,0 +1,7 @@
+[Unit]
+Description=Restart local-openfinance for daily backup and sync
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/systemctl --user restart local-openfinance.service

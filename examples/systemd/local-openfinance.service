@@ -1,0 +1,14 @@
+[Unit]
+Description=Local Openfinance (daily backup, web UI, then background sync)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/path/to/local-openfinance
+Environment=LOG_LEVEL=info
+# Loads .env from WorkingDirectory (OPENFINANCE_API_KEY, LOCAL_OPENFINANCE_WEB_TOKEN, TZ).
+ExecStart=/usr/bin/node dist/bundle/local-openfinance.mjs maintain --config examples/expenses-config.json --serve
+
+[Install]
+WantedBy=default.target

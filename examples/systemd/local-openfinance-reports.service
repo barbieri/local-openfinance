@@ -1,0 +1,12 @@
+[Unit]
+Description=Generate and email due local-openfinance reports
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/path/to/local-openfinance
+Environment=LOG_LEVEL=info
+# Configure notify.smtp; .env supplies model keys, SMTP password, and TZ.
+ExecStart=/usr/bin/node dist/bundle/local-openfinance.mjs run --config examples/expenses-config.json --due --send
+TimeoutStartSec=30min

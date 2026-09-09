@@ -1,0 +1,17 @@
+/node_modules/
+/dist/
+/coverage/
+**/tmp/**
+**/tmp
+*.sqlite
+*.sqlite3
+*.db
+*.log
+.env
+.env.*
+*~
+\#*
+.\#*
+!.env.example
+.DS_Store
+.pnpm-store/

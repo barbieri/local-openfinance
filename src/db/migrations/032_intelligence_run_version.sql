@@ -1,0 +1,1 @@
+ALTER TABLE intelligence_runs ADD COLUMN version INTEGER NOT NULL DEFAULT 1;

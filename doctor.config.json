@@ -1,0 +1,10 @@
+{
+  "$schema": "https://react.doctor/schema/config.json",
+  "ignore": {
+    "files": [".agents/**"]
+  },
+  "rules": {
+    "deslop/unused-dev-dependency": "off",
+    "react-doctor/auth-token-in-web-storage": "off"
+  }
+}

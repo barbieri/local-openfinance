@@ -1,0 +1,10 @@
+ALTER TABLE accounts ADD COLUMN credit_brand TEXT;
+ALTER TABLE accounts ADD COLUMN credit_level TEXT;
+ALTER TABLE accounts ADD COLUMN credit_limit_cents INTEGER;
+ALTER TABLE accounts ADD COLUMN credit_available_limit_cents INTEGER;
+ALTER TABLE accounts ADD COLUMN credit_minimum_payment_cents INTEGER;
+ALTER TABLE accounts ADD COLUMN credit_balance_due_date TEXT;
+ALTER TABLE accounts ADD COLUMN credit_status TEXT;
+ALTER TABLE accounts ADD COLUMN bank_transfer_number TEXT;
+ALTER TABLE accounts ADD COLUMN bank_branch TEXT;
+ALTER TABLE accounts ADD COLUMN bank_account TEXT;

@@ -1,0 +1,165 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json",
+  "description": "JSON request bodies for local-openfinance web API write routes.",
+  "$defs": {
+    "labelIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "maxItems": 50
+    },
+    "transactionIds": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1,
+      "maxItems": 1000
+    },
+    "transferLeg": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "accountId", "occurredAt", "amountCents"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "accountId": { "type": "string", "minLength": 1 },
+        "occurredAt": { "type": "string", "minLength": 1 },
+        "amountCents": { "type": "number" },
+        "merchantName": { "type": ["string", "null"] },
+        "description": { "type": ["string", "null"] }
+      }
+    },
+    "transferPair": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "source",
+        "destination",
+        "kind",
+        "confidence",
+        "amountConfidence",
+        "timeConfidence"
+      ],
+      "properties": {
+        "source": { "$ref": "#/$defs/transferLeg" },
+        "destination": { "$ref": "#/$defs/transferLeg" },
+        "kind": {
+          "type": "string",
+          "enum": ["internal_transfer", "investment_funding", "bill_payment"]
+        },
+        "confidence": { "type": "number" },
+        "amountConfidence": { "type": "number" },
+        "timeConfidence": { "type": "number" }
+      }
+    },
+    "saveTransactionClassification": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "categoryOverrideId": { "type": ["string", "null"] },
+        "categoryId": { "type": ["string", "null"] },
+        "subCategoryId": { "type": ["string", "null"] },
+        "labelIds": { "$ref": "#/$defs/labelIds" },
+        "notes": { "type": ["string", "null"], "maxLength": 4000 },
+        "applyToInstallmentSiblings": { "type": "boolean" },
+        "applyToTransactionIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "maxItems": 500
+        }
+      }
+    },
+    "saveEntryAnnotation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["entryType", "entryId"],
+      "properties": {
+        "entryType": {
+          "type": "string",
+          "enum": ["transaction", "investment_transaction"]
+        },
+        "entryId": { "type": "string", "minLength": 1 },
+        "categoryId": { "type": ["string", "null"] },
+        "subCategoryId": { "type": ["string", "null"] },
+        "labelIds": { "$ref": "#/$defs/labelIds" },
+        "labelNames": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "maxItems": 50
+        },
+        "notes": { "type": ["string", "null"], "maxLength": 4000 },
+        "source": { "type": "string", "enum": ["manual", "suggested"] }
+      }
+    },
+    "categoryOverride": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["categoryId"],
+      "properties": {
+        "categoryId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "transferConfirm": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["pairs"],
+      "properties": {
+        "pairs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/transferPair" },
+          "minItems": 1,
+          "maxItems": 100
+        }
+      }
+    },
+    "transferLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sourceId", "destinationId"],
+      "properties": {
+        "sourceId": { "type": "string", "minLength": 1 },
+        "destinationId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "setTransactionBillLink": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["billId"],
+      "properties": {
+        "billId": { "type": "string", "minLength": 1 }
+      }
+    },
+    "saveIntelligenceMemory": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["markdown"],
+      "properties": {
+        "markdown": { "type": "string", "maxLength": 50000 }
+      }
+    },
+    "saveReportRegeneration": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["previewId"],
+      "properties": {
+        "previewId": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    },
+    "executeIntelligenceTool": {
+      "description": "Execute one bounded intelligence tool within a named report scope.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["reportId"],
+      "properties": {
+        "reportId": {
+          "description": "Configured named-report id that supplies the query scope.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        },
+        "args": {
+          "description": "Tool-specific arguments validated again by the selected tool.",
+          "type": "object"
+        }
+      }
+    }
+  }
+}
