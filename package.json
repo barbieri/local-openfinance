@@ -85,7 +85,7 @@
     "concurrently": "^10.0.5",
     "dejavu-fonts-ttf": "2.37.3",
     "dotenv": "^17.4.2",
-    "hono": "^4.13.4",
+    "hono": "^4.13.5",
     "i18next": "^26.4.0",
     "lz-string": "^1.5.0",
     "marked": "^18.0.10",
