@@ -7,6 +7,7 @@ import { FormattedDate } from '../../components/format/dates.js';
 import { FormattedCurrency } from '../../components/format/FormattedCurrency.js';
 import { FormattedPercent } from '../../components/format/FormattedPercent.js';
 import { FormattedNumber } from '../../components/format/numbers.js';
+import { DeletedEntryCell } from '../../components/ui/DeletedEntryCell.js';
 import {
   type InvestmentColumnKey,
   investmentAccountLabel,
@@ -70,6 +71,20 @@ export function buildInvestmentTableColumns(input: {
       id: 'status',
       header: () => input.t('columns.status'),
       enableSorting: true,
+    }),
+    h.display({
+      id: 'deleted',
+      header: () => input.t('columns.deleted'),
+      meta: { align: 'center' },
+      enableSorting: false,
+      cell: ({ row }) => (
+        <DeletedEntryCell
+          deletedAt={typeof row.original.deleted_at === 'string' ? row.original.deleted_at : null}
+          deleteReason={
+            typeof row.original.delete_reason === 'string' ? row.original.delete_reason : null
+          }
+        />
+      ),
     }),
     h.display({
       id: 'total',

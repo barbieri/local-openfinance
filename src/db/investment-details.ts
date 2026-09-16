@@ -8,6 +8,7 @@ import {
 import { resolveConnectionDisplayName } from './connection-labels.js';
 import {
   appendDeletedVisibilityPredicate,
+  DELETED_VISIBILITIES,
   type DeletedVisibility,
   type DeletionMetadata,
 } from './entry-deletion.js';
@@ -67,6 +68,12 @@ export function parseInvestmentGroupBy(value: string | undefined): InvestmentGro
 
 export function parseInvestmentStatusFilter(value: string | undefined): readonly string[] | 'all' {
   return parseListStatusFilter(value);
+}
+
+export function parseInvestmentDeletedVisibility(value: string | undefined): DeletedVisibility {
+  return DELETED_VISIBILITIES.includes(value as DeletedVisibility)
+    ? (value as DeletedVisibility)
+    : 'hide';
 }
 
 export function parseInvestmentDetails(
@@ -216,9 +223,10 @@ export function enrichInvestmentRow(db: DatabaseSync, row: InvestmentRow): Enric
 export function listEnrichedInvestments(
   db: DatabaseSync,
   statusFilter: readonly string[] | 'all',
+  deletedVisibility: DeletedVisibility = 'hide',
 ): EnrichedInvestment[] {
   const enriched: EnrichedInvestment[] = [];
-  for (const row of loadInvestments(db)) {
+  for (const row of loadInvestments(db, deletedVisibility)) {
     const item = enrichInvestmentRow(db, row);
     if (matchesListStatusFilter(item.status, statusFilter)) {
       enriched.push(item);

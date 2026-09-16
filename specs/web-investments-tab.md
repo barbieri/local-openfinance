@@ -23,9 +23,12 @@ When a status filter is selected, it is sent as:
 Parsed investment fields are persisted during sync and used by list/API layers.
 See `sync-openfinance.md`.
 
-Deleted positions are hidden from this ordinary list regardless of the selected
+Deleted positions are hidden from ordinary list consumers regardless of the selected
 status filter. Their child investment movements are also excluded from normal
-classification, list, net-worth, and report inputs.
+classification, list, net-worth, and report inputs. The Investments web list can opt in
+through `GET /api/investments?deleted=all` or `?deleted=only`. Missing and invalid values
+default to `hide`, independently of status. Its rows include top-level `deleted_at` and
+`delete_reason` for the Deleted table column.
 
 ## Permalink and deletion
 
@@ -43,13 +46,19 @@ banner with its deletion time and reason and no longer offers Delete.
 
 The tab keeps search, status, grouping, and visible-column controls in the
 shared collapsible Filters & columns panel. The closed-panel trigger summarizes
-the active status, search, and grouping settings.
+the active status, selected deleted visibility, search, and grouping settings.
 
 Status filter options:
 
 - `ACTIVE`
 - `all`
 - `ACTIVE,TOTAL_WITHDRAWAL`
+
+The Advanced sidebar section offers deleted visibility:
+
+- Hide deleted, the default
+- Show all
+- Deleted only
 
 When a single status filter is active, the status column is hidden from the
 effective visible columns.
@@ -77,11 +86,14 @@ Grouped rows show:
 
 ## Columns
 
-Column visibility is user-controlled in the tab.
+Column visibility is user-controlled in the tab. The Deleted column uses the shared deletion
+marker and is automatically hidden while Hide deleted is selected. Its selected state remains
+stored and reappears for Show all and Deleted only. The status column follows the same
+effective-only hiding rule for a single-status filter.
 
-At least one effective table column remains visible after a column toggle, grouping change, or
-single-status filter change. When grouping hides every selected column, the tab selects Name as
-the fallback, except name grouping uses Total.
+At least one effective table column remains visible after a column toggle, grouping change,
+single-status filter change, or deleted-filter change. When automatic hiding removes every
+selected column, the tab selects Name as the fallback, except name grouping uses Total.
 
 Grouping hides the grouped column where applicable.
 

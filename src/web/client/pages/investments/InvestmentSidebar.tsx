@@ -7,6 +7,7 @@ import {
   INVESTMENT_COLUMN_KEYS,
   INVESTMENT_GROUP_BY_FIELDS,
   type InvestmentColumnKey,
+  type InvestmentDeletedFilter,
   type InvestmentGroupBy,
   type InvestmentViewSummaryPart,
   investmentGroupByLabelKey,
@@ -19,6 +20,8 @@ type InvestmentSidebarProps = {
   readonly onSearchChange: (search: string) => void;
   readonly statusFilter: string;
   readonly onStatusFilterChange: (statusFilter: string) => void;
+  readonly deletedFilter: InvestmentDeletedFilter;
+  readonly onDeletedFilterChange: (deletedFilter: InvestmentDeletedFilter) => void;
   readonly groupBy: InvestmentGroupBy;
   readonly onGroupByChange: (groupBy: InvestmentGroupBy) => void;
   readonly singleStatusFilter: boolean;
@@ -33,6 +36,8 @@ export function InvestmentSidebar({
   onSearchChange,
   statusFilter,
   onStatusFilterChange,
+  deletedFilter,
+  onDeletedFilterChange,
   groupBy,
   onGroupByChange,
   singleStatusFilter,
@@ -71,6 +76,23 @@ export function InvestmentSidebar({
               <option value="ACTIVE">{t('filters.statusActive')}</option>
               <option value="all">{t('filters.statusAll')}</option>
               <option value="ACTIVE,TOTAL_WITHDRAWAL">{t('filters.statusActiveWithdrawn')}</option>
+            </select>
+          </label>
+        </SidebarSection>
+
+        <SidebarSection title={t('filters.sectionAdvanced')} defaultOpen={false}>
+          <label className="flex flex-col gap-1 text-sm">
+            <span>{t('filters.deleted')}</span>
+            <select
+              className="rounded border border-input bg-background px-2 py-1 text-sm"
+              value={deletedFilter}
+              onChange={(event) =>
+                onDeletedFilterChange(event.target.value as InvestmentDeletedFilter)
+              }
+            >
+              <option value="hide">{t('filters.deletedHide')}</option>
+              <option value="all">{t('filters.deletedAll')}</option>
+              <option value="only">{t('filters.deletedOnly')}</option>
             </select>
           </label>
         </SidebarSection>

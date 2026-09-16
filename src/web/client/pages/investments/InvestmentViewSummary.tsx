@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import type { InvestmentViewSummaryPart } from './investments-page-helpers.js';
+import {
+  type InvestmentViewSummaryPart,
+  investmentViewSummaryPartLabel,
+} from './investments-page-helpers.js';
 
 export function InvestmentViewSummaryParts({
   parts,
@@ -15,9 +18,7 @@ export function InvestmentViewSummaryParts({
           key={part.id}
           className="inline-flex max-w-full items-center rounded border border-border bg-background px-1.5 py-0.5 text-xs"
         >
-          {part.id === 'search'
-            ? `${t('filters.searchInvestments')}: ${part.value}`
-            : t(part.translationKey)}
+          {investmentViewSummaryPartLabel(part, t)}
         </span>
       ))}
     </span>

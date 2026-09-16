@@ -66,6 +66,7 @@ import { listEnrichedConnections } from '../../db/connection-list-details.js';
 import { listEnrichedCreditCardBills } from '../../db/credit-card-bill-details.js';
 import {
   listEnrichedInvestments,
+  parseInvestmentDeletedVisibility,
   parseInvestmentStatusFilter,
 } from '../../db/investment-details.js';
 import { serializeInvestmentForJson } from '../../db/investments/present.js';
@@ -228,7 +229,8 @@ export function createWebApp(ctx: WebServerContext): Hono {
 
   app.get('/api/investments', (c) => {
     const statusFilter = parseInvestmentStatusFilter(c.req.query('status'));
-    const investments = listEnrichedInvestments(ctx.db, statusFilter);
+    const deletedVisibility = parseInvestmentDeletedVisibility(c.req.query('deleted'));
+    const investments = listEnrichedInvestments(ctx.db, statusFilter, deletedVisibility);
     return c.json({
       rows: investments.map((inv) => {
         const serialized = serializeInvestmentForJson(inv);
@@ -243,6 +245,8 @@ export function createWebApp(ctx: WebServerContext): Hono {
           code: inv.code,
           currency: inv.currency,
           balance_cents: inv.balance_cents,
+          deleted_at: inv.deleted_at,
+          delete_reason: inv.delete_reason,
           ...parsed,
         };
       }),

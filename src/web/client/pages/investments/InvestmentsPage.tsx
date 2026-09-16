@@ -30,6 +30,7 @@ import {
   filterInvestmentRows,
   GROUP_BY_COLUMN,
   type InvestmentColumnKey,
+  type InvestmentDeletedFilter,
   type InvestmentGroupBy,
   investmentAllocationCents,
   investmentAmountCents,
@@ -73,6 +74,7 @@ export function InvestmentsPage() {
   const { openInvestmentPermalink } = useAppNavigation();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
+  const [deletedFilter, setDeletedFilter] = useState<InvestmentDeletedFilter>('hide');
   const [groupBy, setGroupBy] = useState<InvestmentGroupBy>(DEFAULT_INVESTMENT_GROUP_BY);
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [chartsOpen, setChartsOpen] = useState(false);
@@ -91,14 +93,15 @@ export function InvestmentsPage() {
       visibleColumns,
       groupBy: effectiveGroupBy,
       singleStatus: singleStatusFilter,
+      deletedFilter,
     });
-  }, [effectiveGroupBy, singleStatusFilter, visibleColumns]);
+  }, [deletedFilter, effectiveGroupBy, singleStatusFilter, visibleColumns]);
 
   const { data } = useQuery({
-    queryKey: ['investments', statusFilter],
+    queryKey: ['investments', statusFilter, deletedFilter],
     queryFn: () =>
       apiJson<{ rows: Record<string, unknown>[] }>(
-        `/api/investments${statusFilter ? `?status=${encodeURIComponent(statusFilter)}` : ''}`,
+        `/api/investments?status=${encodeURIComponent(statusFilter)}&deleted=${deletedFilter}`,
       ),
   });
 
@@ -108,8 +111,14 @@ export function InvestmentsPage() {
   );
 
   const viewSummary = useMemo(
-    () => buildInvestmentViewSummary({ search, statusFilter, groupBy: effectiveGroupBy }),
-    [effectiveGroupBy, search, statusFilter],
+    () =>
+      buildInvestmentViewSummary({
+        search,
+        statusFilter,
+        deletedFilter,
+        groupBy: effectiveGroupBy,
+      }),
+    [deletedFilter, effectiveGroupBy, search, statusFilter],
   );
 
   const allocationModel = useMemo(
@@ -190,9 +199,23 @@ export function InvestmentsPage() {
       statusFilter: next,
       groupBy,
       visibleColumns,
+      deletedFilter,
     });
     setGroupBy(updatedView.groupBy);
     setVisibleColumns(updatedView.visibleColumns);
+  };
+
+  const handleDeletedFilterChange = (next: InvestmentDeletedFilter) => {
+    setDeletedFilter(next);
+    setChartSelections(clearInvestmentAllocationChartSelections);
+    setVisibleColumns((current) =>
+      ensureInvestmentVisibleColumns({
+        visibleColumns: current,
+        groupBy: effectiveGroupBy,
+        singleStatus: singleStatusFilter,
+        deletedFilter: next,
+      }),
+    );
   };
 
   const handleSearchChange = (next: string) => {
@@ -207,6 +230,7 @@ export function InvestmentsPage() {
         visibleColumns: current,
         groupBy: next,
         singleStatus: singleStatusFilter,
+        deletedFilter,
       }),
     );
   };
@@ -271,6 +295,8 @@ export function InvestmentsPage() {
         onSearchChange={handleSearchChange}
         statusFilter={statusFilter}
         onStatusFilterChange={handleStatusFilterChange}
+        deletedFilter={deletedFilter}
+        onDeletedFilterChange={handleDeletedFilterChange}
         groupBy={effectiveGroupBy}
         onGroupByChange={handleGroupByChange}
         singleStatusFilter={singleStatusFilter}
@@ -281,6 +307,7 @@ export function InvestmentsPage() {
               visibleColumns: current,
               groupBy: effectiveGroupBy,
               singleStatus: singleStatusFilter,
+              deletedFilter,
               key,
               checked,
             }),

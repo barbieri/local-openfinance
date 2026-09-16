@@ -27,6 +27,15 @@ function createApp(): ReturnType<typeof createWebApp> {
     )`,
   ).run();
   db.prepare(
+    `INSERT INTO investments (
+      id, connection_item_id, type, subtype, name, code, balance_cents, currency, raw_json, synced_at
+    ) VALUES (
+      'inv-2', 'item-1', 'FIXED_INCOME', 'CDB', 'CDB Active', 'CDBA11', 67890, 'BRL',
+      '{"status":"ACTIVE","quantity":6,"amount":"678.90","issuer":"Issuer"}',
+      '2026-06-10T00:00:00.000Z'
+    )`,
+  ).run();
+  db.prepare(
     `INSERT INTO investment_transactions (
       id, investment_id, occurred_at, type, amount_cents, currency, raw_json, synced_at
     ) VALUES ('movement-1', 'inv-1', '2026-06-01T00:00:00.000Z', 'BUY', 12345, 'BRL', '{}', '2026-06-10T00:00:00.000Z')`,
@@ -70,8 +79,27 @@ describe('investment detail web API', () => {
     await expect(deletedDetail.json()).resolves.toMatchObject({
       investment: { db: { id: 'inv-1', delete_reason: 'provider duplicate' } },
     });
-    const list = await app.request('/api/investments?status=all', { headers });
-    await expect(list.json()).resolves.toEqual({ rows: [] });
+    const hidden = await app.request('/api/investments?status=all', { headers });
+    await expect(hidden.json()).resolves.toMatchObject({ rows: [{ id: 'inv-2' }] });
+
+    const invalid = await app.request('/api/investments?status=all&deleted=invalid', { headers });
+    await expect(invalid.json()).resolves.toMatchObject({ rows: [{ id: 'inv-2' }] });
+
+    const all = await app.request('/api/investments?status=ACTIVE&deleted=all', { headers });
+    const allBody = (await all.json()) as { rows: unknown[] };
+    expect(allBody.rows).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: 'inv-1',
+          deleted_at: expect.any(String),
+          delete_reason: 'provider duplicate',
+        }),
+        expect.objectContaining({ id: 'inv-2', deleted_at: null, delete_reason: null }),
+      ]),
+    );
+
+    const only = await app.request('/api/investments?status=ACTIVE&deleted=only', { headers });
+    await expect(only.json()).resolves.toMatchObject({ rows: [{ id: 'inv-1' }] });
   });
 
   it('validates the delete body and returns 404 for a missing investment', async () => {

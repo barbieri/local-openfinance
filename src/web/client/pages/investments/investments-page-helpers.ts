@@ -18,6 +18,7 @@ export const INVESTMENT_COLUMN_KEYS = [
   'isin',
   'rate',
   'issuer',
+  'deleted',
   'purchaseDate',
   'dueDate',
   'taxes',
@@ -25,6 +26,9 @@ export const INVESTMENT_COLUMN_KEYS = [
   'allocation',
 ] as const;
 export type InvestmentColumnKey = (typeof INVESTMENT_COLUMN_KEYS)[number];
+
+export const INVESTMENT_DELETED_FILTERS = ['hide', 'all', 'only'] as const;
+export type InvestmentDeletedFilter = (typeof INVESTMENT_DELETED_FILTERS)[number];
 
 export type InvestmentGroupBy =
   | 'none'
@@ -90,21 +94,53 @@ export function investmentStatusFilterLabelKey(statusFilter: string): string {
   }
 }
 
+export function investmentDeletedFilterLabelKey(deletedFilter: InvestmentDeletedFilter): string {
+  switch (deletedFilter) {
+    case 'all':
+      return 'filters.deletedAll';
+    case 'only':
+      return 'filters.deletedOnly';
+    case 'hide':
+      return 'filters.deletedHide';
+  }
+}
+
 export type InvestmentViewSummaryPart =
-  | { readonly id: 'status' | 'groupBy'; readonly translationKey: string }
+  | { readonly id: 'status' | 'deleted' | 'groupBy'; readonly translationKey: string }
   | { readonly id: 'search'; readonly value: string };
+
+export function investmentViewSummaryPartLabel(
+  part: InvestmentViewSummaryPart,
+  translate: (key: string) => string,
+): string {
+  if (part.id === 'search') {
+    return `${translate('filters.searchInvestments')}: ${part.value}`;
+  }
+  const value = translate(part.translationKey);
+  return part.id === 'deleted' ? `${translate('filters.deleted')}: ${value}` : value;
+}
 
 export function buildInvestmentViewSummary({
   search,
   statusFilter,
+  deletedFilter,
   groupBy,
 }: {
   readonly search: string;
   readonly statusFilter: string;
+  readonly deletedFilter: InvestmentDeletedFilter;
   readonly groupBy: InvestmentGroupBy;
 }): readonly InvestmentViewSummaryPart[] {
   const parts: InvestmentViewSummaryPart[] = [
     { id: 'status', translationKey: investmentStatusFilterLabelKey(statusFilter) },
+    ...(deletedFilter === 'hide'
+      ? []
+      : [
+          {
+            id: 'deleted' as const,
+            translationKey: investmentDeletedFilterLabelKey(deletedFilter),
+          },
+        ]),
     { id: 'groupBy', translationKey: investmentGroupByLabelKey(groupBy) },
   ];
   const trimmedSearch = search.trim();
@@ -128,15 +164,20 @@ export function effectiveInvestmentVisibleColumns({
   visibleColumns,
   groupBy,
   singleStatus,
+  deletedFilter,
 }: {
   readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
   readonly groupBy: InvestmentGroupBy;
   readonly singleStatus: boolean;
+  readonly deletedFilter: InvestmentDeletedFilter;
 }): ReadonlySet<InvestmentColumnKey> {
   const hiddenByGroup = GROUP_BY_COLUMN[groupBy];
   return new Set(
     [...visibleColumns].filter(
-      (key) => key !== hiddenByGroup && !(singleStatus && key === 'status'),
+      (key) =>
+        key !== hiddenByGroup &&
+        !(singleStatus && key === 'status') &&
+        !(deletedFilter === 'hide' && key === 'deleted'),
     ),
   );
 }
@@ -145,12 +186,17 @@ export function ensureInvestmentVisibleColumns({
   visibleColumns,
   groupBy,
   singleStatus,
+  deletedFilter,
 }: {
   readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
   readonly groupBy: InvestmentGroupBy;
   readonly singleStatus: boolean;
+  readonly deletedFilter: InvestmentDeletedFilter;
 }): ReadonlySet<InvestmentColumnKey> {
-  if (effectiveInvestmentVisibleColumns({ visibleColumns, groupBy, singleStatus }).size > 0) {
+  if (
+    effectiveInvestmentVisibleColumns({ visibleColumns, groupBy, singleStatus, deletedFilter })
+      .size > 0
+  ) {
     return visibleColumns;
   }
   return new Set(visibleColumns).add(groupBy === 'name' ? 'total' : 'name');
@@ -160,26 +206,25 @@ export function updateInvestmentViewForStatusFilter({
   statusFilter,
   groupBy,
   visibleColumns,
+  deletedFilter,
 }: {
   readonly statusFilter: string;
   readonly groupBy: InvestmentGroupBy;
   readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
+  readonly deletedFilter: InvestmentDeletedFilter;
 }): {
   readonly groupBy: InvestmentGroupBy;
   readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
 } {
   const singleStatus = isSingleStatusFilter(statusFilter);
   const nextGroupBy = singleStatus && groupBy === 'status' ? 'none' : groupBy;
-  const nextVisibleColumns = new Set(visibleColumns);
-  if (singleStatus) {
-    nextVisibleColumns.delete('status');
-  }
   return {
     groupBy: nextGroupBy,
     visibleColumns: ensureInvestmentVisibleColumns({
-      visibleColumns: nextVisibleColumns,
+      visibleColumns,
       groupBy: nextGroupBy,
       singleStatus,
+      deletedFilter,
     }),
   };
 }
@@ -188,12 +233,14 @@ export function toggleInvestmentVisibleColumn({
   visibleColumns,
   groupBy,
   singleStatus,
+  deletedFilter,
   key,
   checked,
 }: {
   readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
   readonly groupBy: InvestmentGroupBy;
   readonly singleStatus: boolean;
+  readonly deletedFilter: InvestmentDeletedFilter;
   readonly key: InvestmentColumnKey;
   readonly checked: boolean;
 }): ReadonlySet<InvestmentColumnKey> {
@@ -207,6 +254,7 @@ export function toggleInvestmentVisibleColumn({
     visibleColumns: nextVisibleColumns,
     groupBy,
     singleStatus,
+    deletedFilter,
   });
 }
 
