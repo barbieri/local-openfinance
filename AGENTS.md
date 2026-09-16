@@ -173,6 +173,10 @@ local-openfinance/
   `20260826T123456-before-recreate-report-memory`.
 - Apply the same backup rule to configuration and every other changed artifact
   that is not already tracked by Git.
+- `pnpm run qa` rebuilds `dist/bundle/`, which the installed service and report
+  timer execute directly. Add and test a destructive migration's backup gate in
+  the same slice before the first build so a scheduled job cannot apply an
+  intermediate migration without its matching backup.
 
 ## Code conventions
 

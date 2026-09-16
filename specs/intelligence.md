@@ -371,6 +371,26 @@ timeline.
 `buildReportBriefing()` owns the report packet and always takes the resolved
 window. It contains only the deterministic report analysis and net-worth
 snapshot; the superseded alert/episode/rare-event briefing pipeline is not run.
+It also includes a versioned investment allocation snapshot. Soft-deleted
+positions are excluded. Account-scoped reports explicitly mark investments as
+excluded rather than widening their scope to a whole connection. Reports with
+no account filter stay separated by currency and aggregate positive absolute
+values by type, qualified subtype, and qualified code. The snapshot compares
+only to the newest compatible prior run whose period ended before the current
+period. Migration 035 backfills valid historical snapshot version and scope
+metadata into indexed run columns. New runs and regenerations write that
+metadata transactionally, so comparison reads a bounded set of indexed
+candidates rather than scanning every prior report JSON. Compatibility requires
+its scope fingerprint. A baseline change is
+material only when its absolute delta is strictly greater than 1%; additions
+and removals are material without a fabricated percentage. Invalid historical
+JSON is ignored.
+The three transaction charts are required. Investment type, subtype, and code
+pie charts are optional and emitted only when at least one currency has more
+than one positive bucket for that dimension. They never mix currencies, keep
+stable bucket colors, and show a bounded top set plus an `Other` slice when
+needed. Stored optional charts are reloaded for report regeneration and retry
+delivery just like the required charts.
 Transaction facts prefer credit-card purchase date over statement posting
 date. Category and label profiles use the bounded historical window described
 in `specs/intelligent-reports.md`. Net worth compares with the preceding

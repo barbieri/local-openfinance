@@ -5,6 +5,10 @@ import { buildAnnotationLabelIndex } from '../db/annotation-labels.js';
 import type { TransactionChartDataset } from '../db/transaction-charts.js';
 import { getNumberFormat } from '../utils/intl-formatters.js';
 import { resolveCategoryTranslationEnabled } from '../utils/locale-resolve.js';
+import type {
+  InvestmentAllocationBucket,
+  InvestmentReportSnapshot,
+} from './investment-report-snapshot.js';
 import type { ReportAnalysis } from './report-analysis-types.js';
 import { buildReportCategoryIndex } from './report-taxonomy.js';
 
@@ -19,7 +23,13 @@ const FONT_FILES = [
 ] as const;
 
 export type IntelligenceChart = {
-  readonly name: 'cashflow' | 'categories' | 'labels';
+  readonly name:
+    | 'cashflow'
+    | 'categories'
+    | 'labels'
+    | 'investments-type'
+    | 'investments-subtype'
+    | 'investments-code';
   readonly filename: string;
   readonly cid: string;
   readonly mimeType: 'image/png';
@@ -94,11 +104,138 @@ export function reportChartAltText(name: IntelligenceChart['name'], language: st
       'Spending by category over time',
     );
   }
+  if (
+    name === 'investments-type' ||
+    name === 'investments-subtype' ||
+    name === 'investments-code'
+  ) {
+    const level = investmentDimensionLabel(
+      name.replace('investments-', '') as 'type' | 'subtype' | 'code',
+      language,
+    );
+    return localText(
+      language,
+      `Alocação de investimentos por ${level}`,
+      `Investment allocation by ${level}`,
+    );
+  }
   return localText(
     language,
     'Gastos por etiqueta ao longo do tempo',
     'Spending by label over time',
   );
+}
+
+export function renderInvestmentAllocationCharts(
+  snapshot: InvestmentReportSnapshot,
+  language: string,
+): readonly IntelligenceChart[] {
+  if (snapshot.availability === 'excluded') return [];
+  const dimensions = ['type', 'subtype', 'code'] as const;
+  return dimensions.flatMap((dimension) =>
+    snapshot.currencies.some((currency) => currency[dimension].length > 1)
+      ? [renderInvestmentAllocationChart(snapshot, dimension, language)]
+      : [],
+  );
+}
+
+function renderInvestmentAllocationChart(
+  snapshot: Extract<InvestmentReportSnapshot, { readonly availability: 'included' }>,
+  dimension: 'type' | 'subtype' | 'code',
+  language: string,
+): IntelligenceChart {
+  const name = `investments-${dimension}` as const;
+  const currencies = snapshot.currencies.filter((currency) => currency[dimension].length > 1);
+  const panelHeight = Math.max(
+    270,
+    185 +
+      Math.max(
+        ...currencies.map(
+          (currency) => compactInvestmentBuckets(currency[dimension], language).length,
+        ),
+      ) *
+        18,
+  );
+  const panels = currencies
+    .map((currency, panel) => {
+      const column = panel % 3;
+      const row = Math.floor(panel / 3);
+      const x = 90 + column * 380;
+      const y = 145 + row * panelHeight;
+      const buckets = compactInvestmentBuckets(currency[dimension], language);
+      const total = buckets.reduce((sum, bucket) => sum + bucket.cents, 0);
+      let angle = -Math.PI / 2;
+      return [
+        `<text x="${x}" y="${y}" class="section-title">${escapeXml(currency.currency)}</text>`,
+        ...buckets.map((bucket, index) => {
+          const next = angle + (bucket.cents / total) * Math.PI * 2;
+          const path = pieSlice(x + 90, y + 85, 62, angle, next);
+          angle = next;
+          const legendY = y + 164 + index * 18;
+          return `<path d="${path}" fill="${stableColor(bucket.id)}"/><rect x="${x}" y="${legendY - 11}" width="10" height="10" fill="${stableColor(bucket.id)}"/><text x="${x + 15}" y="${legendY}" class="legend">${escapeXml(truncate(bucket.label, 24))} ${escapeXml(formatCompactMoneyLocale(bucket.cents, currency.currency, language))}</text>`;
+        }),
+      ].join('');
+    })
+    .join('');
+  const title = localText(
+    language,
+    `Investimentos por ${investmentDimensionLabel(dimension, language)}`,
+    `Investments by ${dimension}`,
+  );
+  return toChart(
+    name,
+    `report-${name}.png`,
+    `report-${name}@local-openfinance`,
+    reportChartAltText(name, language),
+    svgDocument(
+      `<text x="70" y="60" class="title">${escapeXml(title)}</text>${panels}`,
+      120 + Math.ceil(currencies.length / 3) * panelHeight,
+    ),
+  );
+}
+
+function compactInvestmentBuckets(
+  buckets: readonly InvestmentAllocationBucket[],
+  language: string,
+): readonly InvestmentAllocationBucket[] {
+  const visible = buckets.slice(0, 6);
+  const remainder = buckets.slice(6);
+  const cents = remainder.reduce((sum, bucket) => sum + bucket.cents, 0);
+  return cents > 0
+    ? [
+        ...visible,
+        {
+          id: 'other',
+          label: localText(language, 'Outros', 'Other'),
+          cents,
+          count: remainder.reduce((sum, bucket) => sum + bucket.count, 0),
+        },
+      ]
+    : visible;
+}
+
+function investmentDimensionLabel(
+  dimension: 'type' | 'subtype' | 'code',
+  language: string,
+): string {
+  if (!language.toLowerCase().startsWith('pt')) return dimension;
+  return dimension === 'type' ? 'tipo' : dimension === 'subtype' ? 'subtipo' : 'código';
+}
+
+function pieSlice(cx: number, cy: number, radius: number, start: number, end: number): string {
+  if (end - start >= Math.PI * 2 - 0.00001)
+    return `M ${cx} ${cy} m -${radius} 0 a ${radius} ${radius} 0 1 0 ${radius * 2} 0 a ${radius} ${radius} 0 1 0 -${radius * 2} 0`;
+  const startX = cx + Math.cos(start) * radius;
+  const startY = cy + Math.sin(start) * radius;
+  const endX = cx + Math.cos(end) * radius;
+  const endY = cy + Math.sin(end) * radius;
+  return `M ${cx} ${cy} L ${startX} ${startY} A ${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${endX} ${endY} Z`;
+}
+
+function stableColor(id: string): string {
+  let hash = 0;
+  for (const character of id) hash = (hash * 31 + (character.codePointAt(0) ?? 0)) >>> 0;
+  return `hsl(${hash % 360} 58% 42%)`;
 }
 
 function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAnalysis): string {
@@ -360,8 +497,8 @@ function escapeXml(value: string): string {
     .replaceAll("'", '&apos;');
 }
 
-function svgDocument(content: string): string {
-  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${HEIGHT}" viewBox="0 0 ${WIDTH} ${HEIGHT}">
+function svgDocument(content: string, height = HEIGHT): string {
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}">
     <style>
       text { font-family: 'DejaVu Sans'; fill: #0f172a; }
       .title { font-size: 30px; font-weight: 700; }
@@ -373,7 +510,7 @@ function svgDocument(content: string): string {
       .bar-label { font-size: 15px; font-weight: 600; }
       .bar-value { font-size: 14px; fill: #475569; }
     </style>
-    <rect width="${WIDTH}" height="${HEIGHT}" fill="#ffffff"/>
+    <rect width="${WIDTH}" height="${height}" fill="#ffffff"/>
     ${content}
   </svg>`;
 }

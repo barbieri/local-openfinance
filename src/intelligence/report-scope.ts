@@ -7,6 +7,10 @@ import { createTransactionWebListFilters } from '../db/transaction-query.js';
 import type { ResolvedConfig, ResolvedReportConfig } from '../types.js';
 import { resolveLocalTimeZone, toLocalDateKey } from '../utils/local-date.js';
 import { IntelligenceToolError } from './intelligence-tool-error.js';
+import {
+  buildInvestmentReportSnapshot,
+  type InvestmentReportSnapshot,
+} from './investment-report-snapshot.js';
 import { buildNetWorthSnapshot, type NetWorthSnapshot } from './net-worth.js';
 import { type LocalDatePeriod, resolveReportWindowPeriod } from './period.js';
 import { buildReportAnalysisPacket, type ReportAnalysis } from './report-analysis.js';
@@ -26,6 +30,7 @@ export type ReportBriefing = {
   readonly period: LocalDatePeriod;
   readonly analysis: ReportAnalysis;
   readonly netWorth: NetWorthSnapshot;
+  readonly investments: InvestmentReportSnapshot;
   readonly [REPORT_BRIEFING_ACCESS]: ReportBriefingAccess;
 };
 
@@ -78,6 +83,7 @@ export function buildReportBriefing(
     period: scope.period,
     analysis: packet.analysis,
     netWorth: buildNetWorthSnapshot(db, scope.report.id, scope.period, scope.report.accountIds),
+    investments: buildInvestmentReportSnapshot(db, scope.report.id, scope.period, scope.report),
     [REPORT_BRIEFING_ACCESS]: {
       reportableFacts: packet.reportableFacts,
       reportableTransactionIds: new Set(packet.reportableFacts.map((fact) => fact.id)),

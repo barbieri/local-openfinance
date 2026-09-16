@@ -119,6 +119,9 @@ function pendingDestructiveMigrationBackupSlug(db: DatabaseSync): string | null 
   if (!migrationApplied(db, 30) && hasLegacyIntelligenceArtifacts(db)) {
     return 'before-reset-legacy-intelligence';
   }
+  if (!migrationApplied(db, 35)) {
+    return 'before-investment-snapshot-index';
+  }
   return null;
 }
 

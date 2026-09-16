@@ -50,6 +50,11 @@ export type IntelligenceRunChart = {
   readonly bytes: Uint8Array;
 };
 
+export type InvestmentSnapshotRun = {
+  readonly briefingJson: string;
+  readonly periodEnd: string;
+};
+
 export type IntelligenceRunModelCall = {
   readonly runId: string;
   readonly ordinal: number;
@@ -299,6 +304,8 @@ type InsertIntelligenceRunInput = {
   readonly subject: string;
   readonly alertCount: number;
   readonly briefingJson: string;
+  readonly investmentSnapshotVersion?: number | null | undefined;
+  readonly investmentScopeFingerprint?: string | null | undefined;
   readonly markdown: string;
   readonly html: string;
   readonly memoryBefore?: string | null | undefined;
@@ -339,11 +346,12 @@ export function insertIntelligenceRun(
     db,
     `INSERT INTO intelligence_runs (
        id, report_id, period_start, period_end, created_at, subject, alert_count,
-       briefing_json, markdown, html, memory_before, memory_after,
+       briefing_json, investment_snapshot_version, investment_scope_fingerprint,
+       markdown, html, memory_before, memory_after,
        cited_transaction_ids_json, trigger_kind, due_key, model_provider, model_name,
        model_call_count, model_step_count, input_tokens, cached_input_tokens, output_tokens,
        reasoning_tokens, total_tokens, model_duration_ms, unpriced_model_call_count, estimated_cost_microusd
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     state.id,
     input.reportId,
     input.periodStart,
@@ -352,6 +360,8 @@ export function insertIntelligenceRun(
     input.subject,
     input.alertCount,
     input.briefingJson,
+    input.investmentSnapshotVersion ?? null,
+    input.investmentScopeFingerprint ?? null,
     input.markdown,
     input.html,
     state.memoryBefore,
@@ -388,6 +398,7 @@ export function replaceIntelligenceRun(
     db,
     `UPDATE intelligence_runs
      SET subject = ?, alert_count = ?, briefing_json = ?, markdown = ?, html = ?,
+         investment_snapshot_version = ?, investment_scope_fingerprint = ?,
          memory_before = ?, memory_after = ?, cited_transaction_ids_json = ?,
          model_provider = ?, model_name = ?, model_call_count = ?, model_step_count = ?,
          input_tokens = ?, cached_input_tokens = ?, output_tokens = ?, reasoning_tokens = ?,
@@ -399,6 +410,8 @@ export function replaceIntelligenceRun(
     input.briefingJson,
     input.markdown,
     input.html,
+    input.investmentSnapshotVersion ?? null,
+    input.investmentScopeFingerprint ?? null,
     input.memoryBefore ?? null,
     input.memoryAfter ?? null,
     input.citedTransactionIdsJson,
@@ -428,6 +441,34 @@ export function replaceIntelligenceRun(
     throw new Error('Failed to load replaced intelligence run');
   }
   return presentRun(row);
+}
+
+export function listCompatibleInvestmentSnapshotRuns(
+  db: DatabaseSync,
+  input: {
+    readonly reportId: string;
+    readonly beforePeriodEnd: string;
+    readonly snapshotVersion: number;
+    readonly scopeFingerprint: string;
+    readonly limit: number;
+  },
+): readonly InvestmentSnapshotRun[] {
+  return allSql<{ readonly briefing_json: string; readonly period_end: string }>(
+    db,
+    `SELECT briefing_json, period_end
+     FROM intelligence_runs
+     WHERE report_id = ?
+       AND investment_snapshot_version = ?
+       AND investment_scope_fingerprint = ?
+       AND period_end < ?
+     ORDER BY period_end DESC, created_at DESC, id DESC
+     LIMIT ?`,
+    input.reportId,
+    input.snapshotVersion,
+    input.scopeFingerprint,
+    input.beforePeriodEnd,
+    input.limit,
+  ).map((row) => ({ briefingJson: row.briefing_json, periodEnd: row.period_end }));
 }
 
 export function deleteIntelligenceRunModelCalls(db: DatabaseSync, runId: string): void {

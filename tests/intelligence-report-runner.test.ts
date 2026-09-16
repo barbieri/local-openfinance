@@ -3,12 +3,14 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getIntelligenceRun,
   getIntelligenceRunByDueKey,
+  insertIntelligenceRun,
   listIntelligenceRunChartNames,
   listIntelligenceRunModelCalls,
   listIntelligenceRuns,
   readIntelligenceMemory,
 } from '../src/db/intelligence.js';
 import { migrateDatabase } from '../src/db/migrate.js';
+import { buildInvestmentReportSnapshot } from '../src/intelligence/investment-report-snapshot.js';
 import {
   DueReportAlreadyRunError,
   executeReport,
@@ -103,13 +105,35 @@ const generateReport: GenerateReportWithAgent = async () => ({
   ],
 });
 
-function openDb(): DatabaseSync {
+function openDb(
+  options: { readonly includeTransaction?: boolean; readonly includeStock?: boolean } = {},
+): DatabaseSync {
+  const includeTransaction = options.includeTransaction ?? true;
+  const includeStock = options.includeStock ?? true;
   const db = new DatabaseSync(':memory:');
   migrateDatabase(db);
   db.prepare(
     `INSERT INTO connections (item_id, connector_id, connector_name, status, raw_json, synced_at)
      VALUES ('item-1', '601', 'Bank', 'UPDATED', '{}', '2026-08-17T00:00:00.000Z')`,
   ).run();
+  db.prepare(
+    `INSERT INTO investments (
+       id, connection_item_id, type, subtype, name, code, balance_cents, currency, raw_json, synced_at
+     ) VALUES (
+       'inv-cdb', 'item-1', 'FIXED_INCOME', 'CDB', 'CDB', 'CDB1', 100000, 'BRL', '{}',
+       '2026-08-17T00:00:00.000Z'
+     )`,
+  ).run();
+  if (includeStock) {
+    db.prepare(
+      `INSERT INTO investments (
+         id, connection_item_id, type, subtype, name, code, balance_cents, currency, raw_json, synced_at
+       ) VALUES (
+         'inv-stock', 'item-1', 'VARIABLE_INCOME', 'STOCK', 'Stock', 'STK1', 50000, 'BRL', '{}',
+         '2026-08-17T00:00:00.000Z'
+       )`,
+    ).run();
+  }
   db.prepare(
     `INSERT INTO accounts (
        id, connection_item_id, type, name, balance_cents, currency, raw_json, synced_at
@@ -118,14 +142,16 @@ function openDb(): DatabaseSync {
        '2026-08-17T00:00:00.000Z'
      )`,
   ).run();
-  db.prepare(
-    `INSERT INTO transactions (
-       id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at
-     ) VALUES (
-       'tx-1', 'acct-1', '2026-08-12T12:00:00.000Z', -25000, 'BRL',
-       'Purchase', '{}', '2026-08-17T00:00:00.000Z'
-     )`,
-  ).run();
+  if (includeTransaction) {
+    db.prepare(
+      `INSERT INTO transactions (
+         id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at
+       ) VALUES (
+         'tx-1', 'acct-1', '2026-08-12T12:00:00.000Z', -25000, 'BRL',
+         'Purchase', '{}', '2026-08-17T00:00:00.000Z'
+       )`,
+    ).run();
+  }
   return db;
 }
 
@@ -167,6 +193,9 @@ describe('report runner', () => {
     expect(listIntelligenceRunChartNames(db, result.run?.id ?? '')).toEqual([
       'cashflow',
       'categories',
+      'investments-code',
+      'investments-subtype',
+      'investments-type',
       'labels',
     ]);
     expect(readIntelligenceMemory(db, 'weekly').markdown).toContain('Stable');
@@ -210,7 +239,14 @@ describe('report runner', () => {
     );
 
     expect(result.run).toBeNull();
-    expect(result.charts).toHaveLength(3);
+    expect(result.charts.map((chart) => chart.name)).toEqual([
+      'cashflow',
+      'categories',
+      'labels',
+      'investments-type',
+      'investments-subtype',
+      'investments-code',
+    ]);
     expect(listIntelligenceRuns(db, 'weekly')).toHaveLength(0);
     expect(
       db.prepare('SELECT COUNT(*) AS count FROM intelligence_run_model_calls').get()?.['count'],
@@ -259,6 +295,9 @@ describe('report runner', () => {
     expect(getIntelligenceRun(db, 'weekly', stored.id)?.subject).toBe('Regenerated report');
     expect(listIntelligenceRuns(db, 'weekly')).toHaveLength(1);
     expect(listIntelligenceRunModelCalls(db, stored.id)).toEqual([]);
+    expect(listIntelligenceRunChartNames(db, stored.id)).toEqual(
+      expect.arrayContaining(['investments-type', 'investments-subtype', 'investments-code']),
+    );
     expect(readIntelligenceMemory(db, 'weekly').markdown).toContain('Stable');
     expect(readIntelligenceMemory(db, 'weekly').markdown).not.toContain('Would change');
   });
@@ -395,6 +434,17 @@ describe('report runner', () => {
 
     expect(generator).toHaveBeenCalledOnce();
     expect(successfulDelivery).toHaveBeenCalledOnce();
+    expect(successfulDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          charts: expect.arrayContaining([
+            expect.objectContaining({ name: 'investments-type' }),
+            expect.objectContaining({ name: 'investments-subtype' }),
+            expect.objectContaining({ name: 'investments-code' }),
+          ]),
+        }),
+      }),
+    );
     expect(retried.emailSent).toBe(true);
     expect(retried.run?.emailSentAt).not.toBeNull();
     expect(retried.usage).toMatchObject({
@@ -403,6 +453,75 @@ describe('report runner', () => {
       estimatedCostMicrousd: 110,
     });
     expect(listIntelligenceRuns(db, 'weekly')).toHaveLength(1);
+  });
+
+  it('sends alerts for material investment changes without counting each dimension', async () => {
+    const db = openDb({ includeTransaction: false, includeStock: false });
+    const priorSnapshot = buildInvestmentReportSnapshot(
+      db,
+      'weekly',
+      { start: '2026-08-03', end: '2026-08-09' },
+      report,
+    );
+    insertIntelligenceRun(db, {
+      reportId: 'weekly',
+      periodStart: '2026-08-03',
+      periodEnd: '2026-08-09',
+      subject: 'Prior report',
+      alertCount: 0,
+      briefingJson: JSON.stringify({ investments: priorSnapshot }),
+      investmentSnapshotVersion: priorSnapshot.version,
+      investmentScopeFingerprint: priorSnapshot.scopeFingerprint,
+      markdown: '',
+      html: '',
+      citedTransactionIdsJson: '[]',
+    });
+    db.prepare(`UPDATE investments SET balance_cents = 102000 WHERE id = 'inv-cdb'`).run();
+    const sendReport = { ...report, send: 'alerts' as const };
+    const sendResolved = { ...resolved, config: { ...resolved.config, reports: [sendReport] } };
+    const delivery = vi.fn(async () => ({ sent: true, message: {} }));
+
+    const result = await executeReport(
+      {
+        db,
+        resolved: sendResolved,
+        reportId: 'weekly',
+        period: { start: '2026-08-10', end: '2026-08-16' },
+        timeZone: 'UTC',
+        triggerKind: 'manual',
+        send: true,
+        dryRun: false,
+      },
+      async () => ({
+        subject: 'Investment alert',
+        markdown: 'Investment alert',
+        html: '<p>Investment alert</p>',
+        memoryAfter: '# Household\n',
+        modelCalls: [],
+      }),
+      delivery,
+    );
+
+    expect(result.generated?.briefing.analysis.mustReport).toEqual([]);
+    const investments = result.generated?.briefing.investments;
+    if (investments?.availability !== 'included') {
+      throw new Error('Expected an included investment snapshot');
+    }
+    const materialChanges = investments.materialChanges;
+    expect(materialChanges).toHaveLength(4);
+    expect(materialChanges.map((change) => change.dimension).toSorted()).toEqual([
+      'code',
+      'subtype',
+      'total',
+      'type',
+    ]);
+    expect(materialChanges.every((change) => change.kind === 'changed')).toBe(true);
+    expect(materialChanges.find((change) => change.dimension === 'total')?.percent).toBeGreaterThan(
+      1,
+    );
+    expect(result.alertCount).toBe(1);
+    expect(result.emailSent).toBe(true);
+    expect(delivery).toHaveBeenCalledOnce();
   });
 
   it('rejects a stale concurrent memory update instead of overwriting it', async () => {

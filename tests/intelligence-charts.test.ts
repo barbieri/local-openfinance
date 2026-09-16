@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import type { TransactionChartDataset } from '../src/db/transaction-charts.js';
-import { renderReportAnalysisCharts } from '../src/intelligence/charts.js';
+import {
+  renderInvestmentAllocationCharts,
+  renderReportAnalysisCharts,
+} from '../src/intelligence/charts.js';
+import type { InvestmentReportSnapshot } from '../src/intelligence/investment-report-snapshot.js';
 import type { ReportAnalysis } from '../src/intelligence/report-analysis-types.js';
 
 const dataset: TransactionChartDataset = {
@@ -64,6 +68,54 @@ const analysis: ReportAnalysis = {
 };
 
 describe('intelligence PNG charts', () => {
+  it('renders deterministic currency-separated investment pies only for multi-bucket dimensions', () => {
+    const snapshot: InvestmentReportSnapshot = {
+      version: 2,
+      scopeFingerprint: 'scope',
+      availability: 'included',
+      previousPeriodEnd: null,
+      materialChanges: [],
+      currencies: ['BRL', 'USD'].map((currency) => ({
+        currency,
+        totalCents: 36_000,
+        count: 8,
+        type: [
+          { id: 'a', label: 'A', cents: 20_000, count: 1 },
+          { id: 'b', label: 'B', cents: 16_000, count: 1 },
+        ],
+        subtype: [{ id: 'a / one', label: 'A / one', cents: 36_000, count: 2 }],
+        code: Array.from({ length: 8 }, (_, index) => ({
+          id: `a / code-${index}`,
+          label: `Code ${index}`,
+          cents: 4_500,
+          count: 1,
+        })),
+      })),
+    };
+    const first = renderInvestmentAllocationCharts(snapshot, 'pt-BR');
+    const second = renderInvestmentAllocationCharts(snapshot, 'pt-BR');
+    expect(first.map((chart) => chart.name)).toEqual(['investments-type', 'investments-code']);
+    expect(first.map((chart) => chart.altText)).toEqual([
+      'Alocação de investimentos por tipo',
+      'Alocação de investimentos por código',
+    ]);
+    expect(first.map((chart) => Buffer.from(chart.bytes))).toEqual(
+      second.map((chart) => Buffer.from(chart.bytes)),
+    );
+    for (const chart of first) {
+      expect(Buffer.from(chart.bytes).subarray(0, 8)).toEqual(
+        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      );
+      expect(Buffer.from(chart.bytes).readUInt32BE(20)).toBeGreaterThanOrEqual(390);
+    }
+    expect(
+      renderInvestmentAllocationCharts(
+        { ...snapshot, availability: 'excluded', previousPeriodEnd: null, currencies: [] },
+        'pt-BR',
+      ),
+    ).toEqual([]);
+  });
+
   it('renders the three current report artifacts as 1200x640 PNGs', () => {
     const charts = renderReportAnalysisCharts(dataset, analysis, {
       categories: { groceries: 'Mercado', housing: 'Casa' },

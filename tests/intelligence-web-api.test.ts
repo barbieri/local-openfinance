@@ -122,6 +122,12 @@ describe('intelligence web API', () => {
     });
     saveIntelligenceRunChart(db, {
       runId: 'run-1',
+      name: 'investments-type',
+      mimeType: 'image/png',
+      bytes: Uint8Array.from([1, 2, 3]),
+    });
+    saveIntelligenceRunChart(db, {
+      runId: 'run-1',
       name: 'remote-model-output',
       mimeType: 'image/svg+xml',
       bytes: new TextEncoder().encode('<svg onload="alert(1)"/>'),
@@ -148,9 +154,18 @@ describe('intelligence web API', () => {
     };
     expect(detailBody.run.markdown).toBe('Utility step-up.');
     expect(detailBody.run.citedTransactionIds).toEqual(['tx-1']);
-    expect(detailBody.run.chartNames).toEqual(['balance', 'remote-model-output']);
+    expect(detailBody.run.chartNames).toEqual([
+      'balance',
+      'investments-type',
+      'remote-model-output',
+    ]);
     expect(detailBody.run.charts).toEqual([
       { name: 'balance', mimeType: 'image/png', dataUrl: 'data:image/png;base64,AQID' },
+      {
+        name: 'investments-type',
+        mimeType: 'image/png',
+        dataUrl: 'data:image/png;base64,AQID',
+      },
     ]);
     expect(detailBody.run.usage).toMatchObject({
       model: 'gpt-5.6-luna',

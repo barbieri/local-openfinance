@@ -33,7 +33,12 @@ const GENERAL_INTELLIGENCE_TOOLS = {
     parse: parseNoArguments,
     execute: ({ db, resolved, scope, briefing }) => {
       const value = briefing ?? buildReportBriefing(db, resolved, scope);
-      return { period: value.period, analysis: value.analysis, netWorth: value.netWorth };
+      return {
+        period: value.period,
+        analysis: value.analysis,
+        netWorth: value.netWorth,
+        investments: value.investments,
+      };
     },
   }),
   memory: defineIntelligenceTool({

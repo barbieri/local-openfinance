@@ -2,6 +2,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { type ReportChart, ReportCharts } from '../components/ReportCharts.js';
 import { ReportHtml } from '../components/ReportHtml.js';
 import { apiJson } from '../lib/api.js';
 import type { ReportsSection } from '../lib/app-hash.js';
@@ -32,11 +33,7 @@ type RunDetail = Omit<RunListItem, 'hasChat'> & {
   readonly markdown: string;
   readonly html: string;
   readonly chartNames: readonly string[];
-  readonly charts: readonly {
-    readonly name: string;
-    readonly mimeType: string;
-    readonly dataUrl: string;
-  }[];
+  readonly charts: readonly ReportChart[];
   readonly citedTransactionIds: readonly string[];
 };
 
@@ -355,18 +352,7 @@ function ReportsCurrentSection({
           <div className="space-y-3 text-sm [&_.report-dashboard]:space-y-4 [&_.report-evidence]:text-muted-foreground [&_.report-finding-attention]:border-l-destructive [&_.report-finding-positive]:border-l-emerald-600 [&_.report-finding]:space-y-1 [&_.report-finding]:border-l-4 [&_.report-finding]:pl-3 [&_.report-findings]:space-y-4 [&_.report-metric-delta]:text-muted-foreground [&_.report-metric-label]:text-muted-foreground [&_.report-metric-value]:text-lg [&_.report-metric-value]:font-semibold [&_.report-metric]:rounded-md [&_.report-metric]:border [&_.report-metric]:p-3 [&_.report-metrics]:grid [&_.report-metrics]:gap-2 [&_.report-metrics]:sm:grid-cols-3 [&_.report-note]:text-muted-foreground [&_.report-table]:w-full [&_.report-table_td]:border-b [&_.report-table_td]:p-2 [&_.report-table_th]:border-b [&_.report-table_th]:p-2 [&_.report-table_th]:text-left [&_a]:text-primary [&_a]:underline [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc">
             <ReportHtml html={selectedRun.run.html} />
           </div>
-          {selectedRun.run.charts.length > 0 ? (
-            <div className="grid gap-3">
-              {selectedRun.run.charts.map((chart) => (
-                <img
-                  key={chart.name}
-                  className="w-full rounded border border-border"
-                  src={chart.dataUrl}
-                  alt={t(`reports.chart.${chart.name}`)}
-                />
-              ))}
-            </div>
-          ) : null}
+          <ReportCharts charts={selectedRun.run.charts} t={t} />
         </article>
       ) : null}
       {preview ? (
@@ -395,6 +381,7 @@ function ReportsCurrentSection({
           <div className="space-y-3 text-sm [&_a]:text-primary [&_a]:underline">
             <ReportHtml html={preview.run.html} />
           </div>
+          <ReportCharts charts={preview.run.charts} t={t} />
         </article>
       ) : null}
       <div className="space-y-2">

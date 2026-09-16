@@ -108,6 +108,65 @@ describe('intelligence tools', () => {
     });
   });
 
+  it('includes the current investment snapshot in the briefing tool', async () => {
+    const db = openDb();
+    const resolved = await scopedConfig();
+    db.prepare(
+      `INSERT INTO investments (
+         id, connection_item_id, type, subtype, name, code, balance_cents, currency, raw_json, synced_at
+       ) VALUES
+         ('active-investment', 'item-1', 'FIXED_INCOME', 'CDB', 'Active CDB', 'CDB1', 50000, 'BRL', '{}',
+          '2026-08-16T00:00:00.000Z'),
+         ('deleted-investment', 'item-1', 'FIXED_INCOME', 'CDB', 'Deleted CDB', 'CDB2', 70000, 'BRL', '{}',
+          '2026-08-16T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `UPDATE investments SET deleted_at = '2026-08-17T00:00:00.000Z'
+       WHERE id = 'deleted-investment'`,
+    ).run();
+
+    const response = executeIntelligenceTool(
+      {
+        db,
+        resolved,
+        now: new Date('2026-08-21T12:00:00.000Z'),
+        timeZone: 'UTC',
+      },
+      'weekly',
+      'briefing',
+      {},
+    ) as {
+      readonly result: {
+        readonly investments: {
+          readonly availability: string;
+          readonly currencies: readonly {
+            readonly currency: string;
+            readonly totalCents: number;
+            readonly count: number;
+            readonly code: readonly { readonly id: string }[];
+          }[];
+        };
+      };
+    };
+
+    expect(response.result.investments).toMatchObject({
+      availability: 'included',
+      currencies: [
+        {
+          currency: 'BRL',
+          totalCents: 50_000,
+          count: 1,
+          code: [{ id: 'FIXED_INCOME / CDB / code:CDB1' }],
+        },
+      ],
+    });
+    expect(
+      response.result.investments.currencies.flatMap((currency) =>
+        currency.code.map((bucket) => bucket.id),
+      ),
+    ).not.toContain('FIXED_INCOME / CDB / CDB2');
+  });
+
   it('enforces the report period, amount floor, caps, and classification source', async () => {
     const db = openDb();
     const resolved = await scopedConfig();

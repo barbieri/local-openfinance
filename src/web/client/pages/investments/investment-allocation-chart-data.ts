@@ -1,6 +1,13 @@
+import {
+  aggregateInvestmentAllocationBuckets,
+  type InvestmentAllocationDimension,
+  investmentAllocationBucketIdentity,
+  type InvestmentAllocationPosition as SharedInvestmentAllocationPosition,
+} from '../../../../investment-allocation.js';
+
 const COMMON_TYPE_COLORS: Readonly<Record<string, string>> = {
-  'type:FIXED_INCOME': '#0f766e',
-  'type:VARIABLE_INCOME': '#2563eb',
+  FIXED_INCOME: '#0f766e',
+  VARIABLE_INCOME: '#2563eb',
 };
 
 export type InvestmentAllocationBucket = {
@@ -20,6 +27,20 @@ export type InvestmentAllocationPosition = {
   readonly totalCents: number;
   readonly allocationCents: number;
 };
+
+function allocationPosition(
+  position: InvestmentAllocationPosition,
+): SharedInvestmentAllocationPosition {
+  return {
+    id: position.id,
+    currency: position.currency,
+    type: position.type,
+    subtype: position.subtype,
+    code: position.code,
+    displayName: position.displayName,
+    cents: positiveAllocationCents(position),
+  };
+}
 
 export type InvestmentAllocationModel = {
   readonly positions: readonly InvestmentAllocationPosition[];
@@ -201,74 +222,26 @@ export function assignInvestmentAllocationChartColors(
   return new Map([...new Set(ids)].map((id) => [id, investmentAllocationChartColor(id)]));
 }
 
-function sortBuckets(buckets: Iterable<InvestmentAllocationBucket>): InvestmentAllocationBucket[] {
-  return [...buckets].toSorted((left, right) => {
-    const amountOrder = right.cents - left.cents;
-    if (amountOrder !== 0) {
-      return amountOrder;
-    }
-    const labelOrder = left.label.localeCompare(right.label);
-    return labelOrder !== 0 ? labelOrder : left.id.localeCompare(right.id);
-  });
-}
-
 function aggregateBuckets(
   positions: readonly InvestmentAllocationPosition[],
-  readBucket: (position: InvestmentAllocationPosition) => {
-    readonly id: string;
-    readonly label: string;
-  },
+  dimension: InvestmentAllocationDimension,
 ): InvestmentAllocationBucket[] {
-  const totals = new Map<string, InvestmentAllocationBucket>();
-  for (const position of positions) {
-    const cents = positiveAllocationCents(position);
-    if (cents <= 0) {
-      continue;
-    }
-    const bucket = readBucket(position);
-    const previous = totals.get(bucket.id);
-    totals.set(bucket.id, {
-      ...bucket,
-      cents: (previous?.cents ?? 0) + cents,
-      color: investmentAllocationChartColor(bucket.id),
-    });
-  }
-  const buckets = sortBuckets(totals.values());
+  const buckets = aggregateInvestmentAllocationBuckets(
+    positions.map(allocationPosition),
+    dimension,
+  );
   const colors = assignInvestmentAllocationChartColors(buckets.map((bucket) => bucket.id));
   return buckets.map((bucket) => ({ ...bucket, color: colors.get(bucket.id) ?? '#64748b' }));
-}
-
-function typeBucket(position: InvestmentAllocationPosition): {
-  readonly id: string;
-  readonly label: string;
-} {
-  const label = readableValue(position.type, 'Unknown');
-  return { id: `type:${label}`, label };
-}
-
-function subtypeBucket(
-  position: InvestmentAllocationPosition,
-  typeId: string,
-): { readonly id: string; readonly label: string } {
-  const label = readableValue(position.subtype, 'Unknown');
-  return { id: `${typeId}/subtype:${label}`, label };
-}
-
-function codeBucket(
-  position: InvestmentAllocationPosition,
-  subtypeId: string,
-): { readonly id: string; readonly label: string } {
-  const code = position.code ?? '';
-  const label = code || position.displayName;
-  const identity = code || position.id || label;
-  return { id: `${subtypeId}/code:${identity}`, label };
 }
 
 function rowsForType(
   positions: readonly InvestmentAllocationPosition[],
   typeId: string,
 ): InvestmentAllocationPosition[] {
-  return positions.filter((position) => typeBucket(position).id === typeId);
+  return positions.filter(
+    (position) =>
+      investmentAllocationBucketIdentity(allocationPosition(position), 'type').id === typeId,
+  );
 }
 
 function rowsForSubtype(
@@ -278,7 +251,8 @@ function rowsForSubtype(
 ): InvestmentAllocationPosition[] {
   return positions.filter(
     (position) =>
-      typeBucket(position).id === typeId && subtypeBucket(position, typeId).id === subtypeId,
+      investmentAllocationBucketIdentity(allocationPosition(position), 'type').id === typeId &&
+      investmentAllocationBucketIdentity(allocationPosition(position), 'subtype').id === subtypeId,
   );
 }
 
@@ -322,7 +296,7 @@ function buildCurrencyChart(
   positions: readonly InvestmentAllocationPosition[],
   selection: InvestmentAllocationSelection,
 ): InvestmentAllocationCurrencyChart | null {
-  const types = aggregateBuckets(positions, typeBucket);
+  const types = aggregateBuckets(positions, 'type');
   if (types.length === 0) {
     return null;
   }
@@ -330,9 +304,7 @@ function buildCurrencyChart(
   const subtypes =
     selectedType == null
       ? []
-      : aggregateBuckets(rowsForType(positions, selectedType.id), (position) =>
-          subtypeBucket(position, selectedType.id),
-        );
+      : aggregateBuckets(rowsForType(positions, selectedType.id), 'subtype');
   const resolvedTypeAndSubtype = resolveInvestmentAllocationSelection({
     types,
     subtypes,
@@ -344,10 +316,7 @@ function buildCurrencyChart(
   const codes =
     resolvedType == null || resolvedSubtype == null
       ? []
-      : aggregateBuckets(
-          rowsForSubtype(positions, resolvedType.id, resolvedSubtype.id),
-          (position) => codeBucket(position, resolvedSubtype.id),
-        );
+      : aggregateBuckets(rowsForSubtype(positions, resolvedType.id, resolvedSubtype.id), 'code');
   const resolvedSelection = resolveInvestmentAllocationSelection({
     types,
     subtypes,

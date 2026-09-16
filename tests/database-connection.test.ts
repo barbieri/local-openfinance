@@ -7,6 +7,56 @@ import { backupBeforeDestructiveMigrations } from '../src/db/connection.js';
 import { migrateDatabase } from '../src/db/migrate.js';
 
 describe('database migration backup boundary', () => {
+  it('indexes valid historical investment snapshots without rejecting invalid report JSON', () => {
+    const db = new DatabaseSync(':memory:');
+    try {
+      migrateDatabase(db);
+      db.exec(`
+        DROP INDEX idx_intelligence_runs_investment_snapshot;
+        ALTER TABLE intelligence_runs DROP COLUMN investment_snapshot_version;
+        ALTER TABLE intelligence_runs DROP COLUMN investment_scope_fingerprint;
+      `);
+      db.prepare('DELETE FROM schema_migrations WHERE version = 35').run();
+      db.prepare(
+        `INSERT INTO intelligence_runs (
+           id, report_id, period_start, period_end, created_at, subject, alert_count,
+           briefing_json, markdown, html, cited_transaction_ids_json
+         ) VALUES (?, 'weekly', '2026-01-01', '2026-01-07', '2026-01-08T00:00:00Z', 'valid', 0, ?, '', '', '[]')`,
+      ).run(
+        'valid-snapshot',
+        JSON.stringify({
+          investments: { version: 2, scopeFingerprint: 'scope-1', availability: 'included' },
+        }),
+      );
+      db.prepare(
+        `INSERT INTO intelligence_runs (
+           id, report_id, period_start, period_end, created_at, subject, alert_count,
+           briefing_json, markdown, html, cited_transaction_ids_json
+         ) VALUES ('invalid-snapshot', 'weekly', '2026-01-01', '2026-01-07', '2026-01-08T00:00:00Z', 'invalid', 0, 'not JSON', '', '', '[]')`,
+      ).run();
+
+      expect(migrateDatabase(db)).toEqual([35]);
+      expect(
+        db
+          .prepare(
+            `SELECT investment_snapshot_version, investment_scope_fingerprint
+             FROM intelligence_runs WHERE id = 'valid-snapshot'`,
+          )
+          .get(),
+      ).toEqual({ investment_snapshot_version: 2, investment_scope_fingerprint: 'scope-1' });
+      expect(
+        db
+          .prepare(
+            `SELECT investment_snapshot_version, investment_scope_fingerprint
+             FROM intelligence_runs WHERE id = 'invalid-snapshot'`,
+          )
+          .get(),
+      ).toEqual({ investment_snapshot_version: null, investment_scope_fingerprint: null });
+    } finally {
+      db.close();
+    }
+  });
+
   it('backs up pre-migration entries before migration 034 adds soft-delete fields', () => {
     const dir = mkdtempSync(path.join(tmpdir(), 'local-openfinance-migration-backup-'));
     const databasePath = path.join(dir, 'openfinance.sqlite');
@@ -59,6 +109,59 @@ describe('database migration backup boundary', () => {
         backup.close();
       }
       expect(migrateDatabase(db)).toEqual([34]);
+    } finally {
+      db.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('backs up intelligence runs before migration 035 adds investment snapshot indexes', () => {
+    const dir = mkdtempSync(path.join(tmpdir(), 'local-openfinance-migration-backup-'));
+    const databasePath = path.join(dir, 'openfinance.sqlite');
+    const db = new DatabaseSync(databasePath);
+    try {
+      migrateDatabase(db);
+      db.prepare(
+        `INSERT INTO intelligence_runs (
+           id, report_id, period_start, period_end, created_at, subject, alert_count,
+           briefing_json, markdown, html, cited_transaction_ids_json
+         ) VALUES ('pre-035-run', 'weekly', '2026-09-01', '2026-09-07', '2026-09-08T00:00:00Z', 'pre-035', 0, ?, '', '', '[]')`,
+      ).run(
+        JSON.stringify({
+          investments: { version: 2, scopeFingerprint: 'scope-before-migration' },
+        }),
+      );
+      db.exec(`
+        DROP INDEX idx_intelligence_runs_investment_snapshot;
+        ALTER TABLE intelligence_runs DROP COLUMN investment_snapshot_version;
+        ALTER TABLE intelligence_runs DROP COLUMN investment_scope_fingerprint;
+      `);
+      db.prepare('DELETE FROM schema_migrations WHERE version = 35').run();
+
+      const backupPath = backupBeforeDestructiveMigrations(db, databasePath);
+
+      expect(backupPath).toMatch(/before-investment-snapshot-index\.sqlite$/u);
+      const backup = new DatabaseSync(backupPath ?? '', { readOnly: true });
+      try {
+        expect(
+          backup
+            .prepare("SELECT briefing_json FROM intelligence_runs WHERE id = 'pre-035-run'")
+            .get()?.['briefing_json'],
+        ).toBe(
+          JSON.stringify({
+            investments: { version: 2, scopeFingerprint: 'scope-before-migration' },
+          }),
+        );
+        expect(() =>
+          backup.prepare(
+            "SELECT investment_snapshot_version FROM intelligence_runs WHERE id = 'pre-035-run'",
+          ),
+        ).toThrow();
+      } finally {
+        backup.close();
+      }
+
+      expect(migrateDatabase(db)).toEqual([35]);
     } finally {
       db.close();
       rmSync(dir, { recursive: true, force: true });

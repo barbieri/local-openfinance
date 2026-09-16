@@ -179,6 +179,9 @@ describe('intelligence store', () => {
       CREATE TABLE intelligence_runs (
         id TEXT PRIMARY KEY,
         report_id TEXT NOT NULL,
+        period_end TEXT NOT NULL DEFAULT '',
+        created_at TEXT NOT NULL DEFAULT '',
+        briefing_json TEXT NOT NULL DEFAULT '{}',
         due_key TEXT,
         trigger_kind TEXT CHECK (trigger_kind IN ('manual', 'due'))
       );
@@ -230,7 +233,7 @@ describe('intelligence store', () => {
       markApplied.run(version);
     }
 
-    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34]);
+    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34, 35]);
     const columns = db
       .prepare('PRAGMA table_info(intelligence_runs)')
       .all()

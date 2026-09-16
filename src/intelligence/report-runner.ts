@@ -21,6 +21,7 @@ import type { ResolvedConfig, ResolvedReportConfig } from '../types.js';
 import {
   type IntelligenceChart,
   loadIntelligenceChartLabels,
+  renderInvestmentAllocationCharts,
   renderReportAnalysisCharts,
   reportChartAltText,
 } from './charts.js';
@@ -203,7 +204,7 @@ export async function executeReport(
   const html = qualifyReportPermalinks(sanitizedHtml, input.resolved.config.web.publicBaseUrl);
   const charts = renderCharts(input.db, scope, briefing);
   const citedTransactionIds = collectCitedTransactionIds(html);
-  const alertCount = briefing.analysis.mustReport.length;
+  const alertCount = briefing.analysis.mustReport.length + investmentAlertCount(briefing);
   const run = input.dryRun
     ? null
     : persistReport(
@@ -330,6 +331,8 @@ export function saveReportRegeneration(
       subject: preview.subject,
       alertCount: preview.alertCount,
       briefingJson: JSON.stringify(preview.briefing),
+      investmentSnapshotVersion: preview.briefing.investments.version,
+      investmentScopeFingerprint: preview.briefing.investments.scopeFingerprint,
       markdown: preview.markdown,
       html: preview.html,
       memoryBefore: preview.memoryBefore,
@@ -384,11 +387,14 @@ function renderCharts(
     ...scope,
     period: { start: chartStart, end: scope.period.end },
   });
-  return renderReportAnalysisCharts(
-    dataset,
-    analysis,
-    loadIntelligenceChartLabels(db, analysis.language),
-  );
+  return [
+    ...renderReportAnalysisCharts(
+      dataset,
+      analysis,
+      loadIntelligenceChartLabels(db, analysis.language),
+    ),
+    ...renderInvestmentAllocationCharts(briefing.investments, analysis.language),
+  ];
 }
 
 function persistReport(
@@ -416,6 +422,8 @@ function persistReport(
       subject: generated.subject,
       alertCount,
       briefingJson: JSON.stringify(briefing),
+      investmentSnapshotVersion: briefing.investments.version,
+      investmentScopeFingerprint: briefing.investments.scopeFingerprint,
       markdown,
       html,
       memoryBefore,
@@ -613,10 +621,18 @@ function loadStoredCharts(
   runId: string,
   language: string,
 ): readonly IntelligenceChart[] {
-  return [
+  const required = [
     requireStoredChart(db, runId, 'cashflow', language),
     requireStoredChart(db, runId, 'categories', language),
     requireStoredChart(db, runId, 'labels', language),
+  ];
+  const optional = ['investments-type', 'investments-subtype', 'investments-code'] as const;
+  return [
+    ...required,
+    ...optional.flatMap((name) => {
+      const stored = getIntelligenceRunChart(db, runId, name);
+      return stored?.mimeType === 'image/png' ? [storedChart(name, stored.bytes, language)] : [];
+    }),
   ];
 }
 
@@ -630,14 +646,31 @@ function requireStoredChart(
   if (stored?.mimeType !== 'image/png') {
     throw new Error(`Stored ${name} chart is unavailable for report delivery.`);
   }
+  return storedChart(name, stored.bytes, language);
+}
+
+function storedChart(
+  name: IntelligenceChart['name'],
+  bytes: Uint8Array,
+  language: string,
+): IntelligenceChart {
   return {
     name,
     filename: `report-${name}.png`,
     cid: `report-${name}@local-openfinance`,
     mimeType: 'image/png',
-    bytes: stored.bytes,
+    bytes,
     altText: reportChartAltText(name, language),
   };
+}
+
+function investmentAlertCount(briefing: ReportBriefing): number {
+  const dimensions = new Set(
+    briefing.investments.availability === 'included'
+      ? briefing.investments.materialChanges.map((change) => change.currency)
+      : [],
+  );
+  return dimensions.size;
 }
 
 function qualifyReportPermalinks(markdown: string, publicBaseUrl: string | undefined): string {

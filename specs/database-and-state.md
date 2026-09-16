@@ -90,8 +90,11 @@ Sibling names are allowed under different parents through composite ids such as
 4. Before pending migration 030 clears legacy report artifacts, writes a
    standalone `VACUUM INTO` backup beside the configured database. This backup
    is mandatory when any legacy report, memory, chart, or chat row exists.
-5. Runs each migration and its `schema_migrations` marker in one transaction.
-6. Rebuilds FTS indexes.
+5. Before pending migration 035 adds and backfills investment snapshot metadata,
+   writes a standalone `VACUUM INTO` backup beside the configured database. This
+   backup is mandatory for every database that has not applied migration 035.
+6. Runs each migration and its `schema_migrations` marker in one transaction.
+7. Rebuilds FTS indexes.
 
 FTS indexes include:
 

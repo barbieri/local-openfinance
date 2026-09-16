@@ -85,8 +85,8 @@ describe('investment allocation chart data', () => {
     ]);
     expect(charts[1]?.types).toMatchObject([{ label: 'VARIABLE_INCOME', cents: 30000 }]);
     expect(charts[1]?.selection).toMatchObject({
-      typeId: 'type:VARIABLE_INCOME',
-      subtypeId: 'type:VARIABLE_INCOME/subtype:ETF',
+      typeId: 'VARIABLE_INCOME',
+      subtypeId: 'VARIABLE_INCOME / ETF',
       codeId: null,
     });
     expect(charts[1]?.codes).toMatchObject([{ label: 'SPY', cents: 30000 }]);
@@ -106,18 +106,18 @@ describe('investment allocation chart data', () => {
 
   it('resolves singleton levels and expands the selected hierarchy only', () => {
     const selectedType = chartsFor(positions, {
-      BRL: { typeId: 'type:FIXED_INCOME', subtypeId: null, codeId: null },
+      BRL: { typeId: 'FIXED_INCOME', subtypeId: null, codeId: null },
     })[0];
     expect(selectedType?.subtypes).toMatchObject([
-      { label: 'LCI', cents: 20000 },
-      { label: 'CDB', cents: 10000 },
+      { label: 'FIXED_INCOME / LCI', cents: 20000 },
+      { label: 'FIXED_INCOME / CDB', cents: 10000 },
     ]);
     expect(selectedType?.codes).toEqual([]);
 
     const selectedSubtype = chartsFor(positions, {
       BRL: {
-        typeId: 'type:FIXED_INCOME',
-        subtypeId: 'type:FIXED_INCOME/subtype:CDB',
+        typeId: 'FIXED_INCOME',
+        subtypeId: 'FIXED_INCOME / CDB',
         codeId: null,
       },
     })[0];
@@ -132,9 +132,9 @@ describe('investment allocation chart data', () => {
     }
     const [chart] = chartsFor([firstPosition], {
       BRL: {
-        typeId: 'type:VARIABLE_INCOME',
-        subtypeId: 'type:VARIABLE_INCOME/subtype:ETF',
-        codeId: 'type:VARIABLE_INCOME/subtype:ETF/code:ETF1',
+        typeId: 'VARIABLE_INCOME',
+        subtypeId: 'VARIABLE_INCOME / ETF',
+        codeId: 'VARIABLE_INCOME / ETF / code:ETF1',
       },
     });
     if (!chart) {
@@ -142,8 +142,8 @@ describe('investment allocation chart data', () => {
     }
 
     expect(chart.selection).toMatchObject({
-      typeId: 'type:FIXED_INCOME',
-      subtypeId: 'type:FIXED_INCOME/subtype:CDB',
+      typeId: 'FIXED_INCOME',
+      subtypeId: 'FIXED_INCOME / CDB',
       codeId: null,
     });
     expect(
@@ -197,9 +197,9 @@ describe('investment allocation chart data', () => {
     expect(
       clearInvestmentAllocationChartSelections({
         BRL: {
-          typeId: 'type:FIXED_INCOME',
-          subtypeId: 'type:FIXED_INCOME/subtype:CDB',
-          codeId: 'type:FIXED_INCOME/subtype:CDB/code:CDB1',
+          typeId: 'FIXED_INCOME',
+          subtypeId: 'FIXED_INCOME / CDB',
+          codeId: 'FIXED_INCOME / CDB / code:CDB1',
         },
       }),
     ).toEqual({});
@@ -221,13 +221,10 @@ describe('investment allocation chart data', () => {
     expect(colorsById(original)).toEqual(colorsById(reordered));
     expect(colorsById(original)).toEqual(colorsById(amountChanged));
     expect(colorsById(withoutCdb)).toEqual(colorsById(original));
-    const colors = assignInvestmentAllocationChartColors([
-      'type:FIXED_INCOME',
-      'type:VARIABLE_INCOME',
-    ]);
-    expect(colors.get('type:FIXED_INCOME')).not.toBe(colors.get('type:VARIABLE_INCOME'));
-    expect(investmentAllocationChartColor('type:FIXED_INCOME/subtype:CDB/code:CDB1')).toBe(
-      investmentAllocationChartColor('type:FIXED_INCOME/subtype:CDB/code:CDB1'),
+    const colors = assignInvestmentAllocationChartColors(['FIXED_INCOME', 'VARIABLE_INCOME']);
+    expect(colors.get('FIXED_INCOME')).not.toBe(colors.get('VARIABLE_INCOME'));
+    expect(investmentAllocationChartColor('FIXED_INCOME / CDB / code:CDB1')).toBe(
+      investmentAllocationChartColor('FIXED_INCOME / CDB / code:CDB1'),
     );
   });
 
