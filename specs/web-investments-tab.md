@@ -41,7 +41,9 @@ banner with its deletion time and reason and no longer offers Delete.
 
 ## Filters
 
-The tab has a client-side search field.
+The tab keeps search, status, grouping, and visible-column controls in the
+shared collapsible Filters & columns panel. The closed-panel trigger summarizes
+the active status, search, and grouping settings.
 
 Status filter options:
 
@@ -53,7 +55,7 @@ When a single status filter is active, the status column is hidden from the
 effective visible columns.
 
 If the current grouping is status and the next filter is a single status, the
-grouping resets to none.
+grouping resets to none. The default grouping is account.
 
 ## Grouping
 
@@ -77,15 +79,17 @@ Grouped rows show:
 
 Column visibility is user-controlled in the tab.
 
-At least one column remains visible.
+At least one effective table column remains visible after a column toggle, grouping change, or
+single-status filter change. When grouping hides every selected column, the tab selects Name as
+the fallback, except name grouping uses Total.
 
 Grouping hides the grouped column where applicable.
 
 ## Totals and allocation
 
-The tab shows a grand total summary with:
+Before the table, the tab shows matching position count plus active status,
+search, and grouping. Its separate grand total summary shows:
 
-- position count
 - totals by currency
 
 Portfolio allocation is computed from investment allocation cents. Group

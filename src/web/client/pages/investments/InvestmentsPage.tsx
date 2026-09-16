@@ -10,11 +10,16 @@ import { apiJson } from '../../lib/api.js';
 import { sumAmountsByCurrency } from '../../lib/currency-totals.js';
 import { useAppNavigation } from '../../lib/navigation.js';
 import { buildInvestmentTableColumns } from './build-investment-table-columns.js';
+import { InvestmentMatchSummary } from './InvestmentMatchSummary.js';
+import { InvestmentSidebar, InvestmentSidebarToggle } from './InvestmentSidebar.js';
 import {
+  buildInvestmentViewSummary,
+  DEFAULT_INVESTMENT_GROUP_BY,
   defaultInvestmentVisibleColumns,
+  effectiveInvestmentVisibleColumns,
+  ensureInvestmentVisibleColumns,
   filterInvestmentRows,
   GROUP_BY_COLUMN,
-  INVESTMENT_COLUMN_KEYS,
   type InvestmentColumnKey,
   type InvestmentGroupBy,
   investmentAllocationCents,
@@ -22,6 +27,8 @@ import {
   investmentGroupKey,
   investmentGroupLabel,
   isSingleStatusFilter,
+  toggleInvestmentVisibleColumn,
+  updateInvestmentViewForStatusFilter,
 } from './investments-page-helpers.js';
 
 export function InvestmentsPage() {
@@ -29,7 +36,8 @@ export function InvestmentsPage() {
   const { openInvestmentPermalink } = useAppNavigation();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
-  const [groupBy, setGroupBy] = useState<InvestmentGroupBy>('none');
+  const [groupBy, setGroupBy] = useState<InvestmentGroupBy>(DEFAULT_INVESTMENT_GROUP_BY);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [visibleColumns, setVisibleColumns] = useState<ReadonlySet<InvestmentColumnKey>>(() =>
     defaultInvestmentVisibleColumns(true),
   );
@@ -38,13 +46,12 @@ export function InvestmentsPage() {
   const effectiveGroupBy = singleStatusFilter && groupBy === 'status' ? 'none' : groupBy;
 
   const effectiveVisibleColumns = useMemo(() => {
-    if (!singleStatusFilter) {
-      return visibleColumns;
-    }
-    const next = new Set(visibleColumns);
-    next.delete('status');
-    return next;
-  }, [singleStatusFilter, visibleColumns]);
+    return effectiveInvestmentVisibleColumns({
+      visibleColumns,
+      groupBy: effectiveGroupBy,
+      singleStatus: singleStatusFilter,
+    });
+  }, [effectiveGroupBy, singleStatusFilter, visibleColumns]);
 
   const { data } = useQuery({
     queryKey: ['investments', statusFilter],
@@ -57,6 +64,11 @@ export function InvestmentsPage() {
   const rows = useMemo(
     () => filterInvestmentRows(data?.rows ?? [], search, statusFilter),
     [data?.rows, search, statusFilter],
+  );
+
+  const viewSummary = useMemo(
+    () => buildInvestmentViewSummary({ search, statusFilter, groupBy: effectiveGroupBy }),
+    [effectiveGroupBy, search, statusFilter],
   );
 
   const allocationById = useMemo(() => {
@@ -139,82 +151,38 @@ export function InvestmentsPage() {
 
   const handleStatusFilterChange = (next: string) => {
     setStatusFilter(next);
-    if (isSingleStatusFilter(next)) {
-      setVisibleColumns((prev) => {
-        const updated = new Set(prev);
-        updated.delete('status');
-        return updated;
-      });
-      if (groupBy === 'status') {
-        setGroupBy('none');
-      }
-    }
+    const updatedView = updateInvestmentViewForStatusFilter({
+      statusFilter: next,
+      groupBy,
+      visibleColumns,
+    });
+    setGroupBy(updatedView.groupBy);
+    setVisibleColumns(updatedView.visibleColumns);
+  };
+
+  const handleGroupByChange = (next: InvestmentGroupBy) => {
+    setGroupBy(next);
+    setVisibleColumns((current) =>
+      ensureInvestmentVisibleColumns({
+        visibleColumns: current,
+        groupBy: next,
+        singleStatus: singleStatusFilter,
+      }),
+    );
   };
 
   return (
     <div className="space-y-3">
-      <div className="flex flex-wrap items-center gap-2">
-        <input
-          type="search"
-          className="min-w-[12rem] rounded border border-input bg-background px-2 py-1 text-sm"
-          placeholder={t('filters.searchInvestments')}
-          aria-label={t('filters.searchInvestments')}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <InvestmentMatchSummary total={rows.length} viewSummary={viewSummary} />
+        <InvestmentSidebarToggle
+          open={sidebarOpen}
+          onOpenChange={setSidebarOpen}
+          viewSummary={viewSummary}
         />
-        <select
-          className="rounded border border-input bg-background px-2 py-1 text-sm"
-          aria-label={t('filters.statusAll')}
-          value={statusFilter}
-          onChange={(e) => handleStatusFilterChange(e.target.value)}
-        >
-          <option value="ACTIVE">{t('filters.statusActive')}</option>
-          <option value="all">{t('filters.statusAll')}</option>
-          <option value="ACTIVE,TOTAL_WITHDRAWAL">{t('filters.statusActiveWithdrawn')}</option>
-        </select>
-        <select
-          className="rounded border border-input bg-background px-2 py-1 text-sm"
-          aria-label={t('filters.groupByConnection')}
-          value={groupBy}
-          onChange={(e) => setGroupBy(e.target.value as InvestmentGroupBy)}
-        >
-          <option value="none">{t('filters.noGrouping')}</option>
-          <option value="connection">{t('filters.groupByConnection')}</option>
-          <option value="account">{t('filters.groupByAccount')}</option>
-          <option value="type">{t('filters.groupByType')}</option>
-          <option value="subtype">{t('filters.groupBySubtype')}</option>
-          {!singleStatusFilter && <option value="status">{t('filters.groupByStatus')}</option>}
-          <option value="name">{t('filters.groupByName')}</option>
-        </select>
-        <details className="rounded border border-border px-2 py-1 text-sm">
-          <summary className="cursor-pointer">{t('filters.columns')}</summary>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {INVESTMENT_COLUMN_KEYS.map((key) => (
-              <label key={key} className="flex items-center gap-1">
-                <input
-                  type="checkbox"
-                  checked={visibleColumns.has(key)}
-                  onChange={(e) => {
-                    setVisibleColumns((prev) => {
-                      const next = new Set(prev);
-                      if (e.target.checked) {
-                        next.add(key);
-                      } else if (next.size > 1) {
-                        next.delete(key);
-                      }
-                      return next;
-                    });
-                  }}
-                />
-                {t(`columns.${key}`)}
-              </label>
-            ))}
-          </div>
-        </details>
       </div>
       <GrandTotalSummary
         label={t('table.grandTotal')}
-        countLabel={t('investments.positionCount', { count: rows.length })}
         totalsByCurrency={portfolioTotalsByCurrency}
       />
       {groupedRows.map((group) => (
@@ -239,6 +207,29 @@ export function InvestmentsPage() {
           <DataTable columns={columns} data={group.rows} emptyMessage={t('table.empty')} />
         </div>
       ))}
+      <InvestmentSidebar
+        open={sidebarOpen}
+        onOpenChange={setSidebarOpen}
+        search={search}
+        onSearchChange={setSearch}
+        statusFilter={statusFilter}
+        onStatusFilterChange={handleStatusFilterChange}
+        groupBy={effectiveGroupBy}
+        onGroupByChange={handleGroupByChange}
+        singleStatusFilter={singleStatusFilter}
+        visibleColumns={visibleColumns}
+        onToggleColumn={(key, checked) =>
+          setVisibleColumns((current) =>
+            toggleInvestmentVisibleColumn({
+              visibleColumns: current,
+              groupBy: effectiveGroupBy,
+              singleStatus: singleStatusFilter,
+              key,
+              checked,
+            }),
+          )
+        }
+      />
     </div>
   );
 }

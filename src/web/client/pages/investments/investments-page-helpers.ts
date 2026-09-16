@@ -35,6 +35,18 @@ export type InvestmentGroupBy =
   | 'status'
   | 'name';
 
+export const DEFAULT_INVESTMENT_GROUP_BY: InvestmentGroupBy = 'account';
+
+export const INVESTMENT_GROUP_BY_FIELDS: readonly InvestmentGroupBy[] = [
+  'none',
+  'connection',
+  'account',
+  'type',
+  'subtype',
+  'status',
+  'name',
+];
+
 export const GROUP_BY_COLUMN: Partial<Record<InvestmentGroupBy, InvestmentColumnKey>> = {
   connection: 'connection',
   account: 'account',
@@ -48,6 +60,60 @@ export function isSingleStatusFilter(statusFilter: string): boolean {
   return statusFilter !== 'all' && !statusFilter.includes(',');
 }
 
+export function investmentGroupByLabelKey(groupBy: InvestmentGroupBy): string {
+  switch (groupBy) {
+    case 'none':
+      return 'filters.noGrouping';
+    case 'connection':
+      return 'filters.groupByConnection';
+    case 'account':
+      return 'filters.groupByAccount';
+    case 'type':
+      return 'filters.groupByType';
+    case 'subtype':
+      return 'filters.groupBySubtype';
+    case 'status':
+      return 'filters.groupByStatus';
+    case 'name':
+      return 'filters.groupByName';
+  }
+}
+
+export function investmentStatusFilterLabelKey(statusFilter: string): string {
+  switch (statusFilter) {
+    case 'ACTIVE':
+      return 'filters.statusActive';
+    case 'ACTIVE,TOTAL_WITHDRAWAL':
+      return 'filters.statusActiveWithdrawn';
+    default:
+      return 'filters.statusAll';
+  }
+}
+
+export type InvestmentViewSummaryPart =
+  | { readonly id: 'status' | 'groupBy'; readonly translationKey: string }
+  | { readonly id: 'search'; readonly value: string };
+
+export function buildInvestmentViewSummary({
+  search,
+  statusFilter,
+  groupBy,
+}: {
+  readonly search: string;
+  readonly statusFilter: string;
+  readonly groupBy: InvestmentGroupBy;
+}): readonly InvestmentViewSummaryPart[] {
+  const parts: InvestmentViewSummaryPart[] = [
+    { id: 'status', translationKey: investmentStatusFilterLabelKey(statusFilter) },
+    { id: 'groupBy', translationKey: investmentGroupByLabelKey(groupBy) },
+  ];
+  const trimmedSearch = search.trim();
+  if (trimmedSearch) {
+    parts.push({ id: 'search', value: trimmedSearch });
+  }
+  return parts;
+}
+
 export function defaultInvestmentVisibleColumns(
   singleStatus: boolean,
 ): ReadonlySet<InvestmentColumnKey> {
@@ -58,8 +124,94 @@ export function defaultInvestmentVisibleColumns(
   );
 }
 
+export function effectiveInvestmentVisibleColumns({
+  visibleColumns,
+  groupBy,
+  singleStatus,
+}: {
+  readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
+  readonly groupBy: InvestmentGroupBy;
+  readonly singleStatus: boolean;
+}): ReadonlySet<InvestmentColumnKey> {
+  const hiddenByGroup = GROUP_BY_COLUMN[groupBy];
+  return new Set(
+    [...visibleColumns].filter(
+      (key) => key !== hiddenByGroup && !(singleStatus && key === 'status'),
+    ),
+  );
+}
+
+export function ensureInvestmentVisibleColumns({
+  visibleColumns,
+  groupBy,
+  singleStatus,
+}: {
+  readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
+  readonly groupBy: InvestmentGroupBy;
+  readonly singleStatus: boolean;
+}): ReadonlySet<InvestmentColumnKey> {
+  if (effectiveInvestmentVisibleColumns({ visibleColumns, groupBy, singleStatus }).size > 0) {
+    return visibleColumns;
+  }
+  return new Set(visibleColumns).add(groupBy === 'name' ? 'total' : 'name');
+}
+
+export function updateInvestmentViewForStatusFilter({
+  statusFilter,
+  groupBy,
+  visibleColumns,
+}: {
+  readonly statusFilter: string;
+  readonly groupBy: InvestmentGroupBy;
+  readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
+}): {
+  readonly groupBy: InvestmentGroupBy;
+  readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
+} {
+  const singleStatus = isSingleStatusFilter(statusFilter);
+  const nextGroupBy = singleStatus && groupBy === 'status' ? 'none' : groupBy;
+  const nextVisibleColumns = new Set(visibleColumns);
+  if (singleStatus) {
+    nextVisibleColumns.delete('status');
+  }
+  return {
+    groupBy: nextGroupBy,
+    visibleColumns: ensureInvestmentVisibleColumns({
+      visibleColumns: nextVisibleColumns,
+      groupBy: nextGroupBy,
+      singleStatus,
+    }),
+  };
+}
+
+export function toggleInvestmentVisibleColumn({
+  visibleColumns,
+  groupBy,
+  singleStatus,
+  key,
+  checked,
+}: {
+  readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
+  readonly groupBy: InvestmentGroupBy;
+  readonly singleStatus: boolean;
+  readonly key: InvestmentColumnKey;
+  readonly checked: boolean;
+}): ReadonlySet<InvestmentColumnKey> {
+  const nextVisibleColumns = new Set(visibleColumns);
+  if (checked) {
+    nextVisibleColumns.add(key);
+  } else if (nextVisibleColumns.size > 1) {
+    nextVisibleColumns.delete(key);
+  }
+  return ensureInvestmentVisibleColumns({
+    visibleColumns: nextVisibleColumns,
+    groupBy,
+    singleStatus,
+  });
+}
+
 export function investmentAmountCents(row: Record<string, unknown>): number {
-  return Number(row.total_cents ?? row.balance_cents ?? 0);
+  return Number(row['total_cents'] ?? row['balance_cents'] ?? 0);
 }
 
 export function investmentAllocationCents(row: Record<string, unknown>): number {
@@ -67,34 +219,36 @@ export function investmentAllocationCents(row: Record<string, unknown>): number 
 }
 
 export function investmentRateLabel(row: Record<string, unknown>): string | null {
-  const cached = row.rate_label;
+  const cached = row['rate_label'];
   if (typeof cached === 'string' && cached.length > 0) {
     return cached;
   }
-  const rate = row.rate;
+  const rate = row['rate'];
   return formatInvestmentRateLabel(
     typeof rate === 'number' ? rate : null,
-    typeof row.rate_type === 'string' ? row.rate_type : null,
+    typeof row['rate_type'] === 'string' ? row['rate_type'] : null,
   );
 }
 
 export function investmentIssuerLabel(row: Record<string, unknown>): string | null {
-  const cached = row.issuer_label;
+  const cached = row['issuer_label'];
   if (typeof cached === 'string' && cached.length > 0) {
     return cached;
   }
   return formatInvestmentIssuerLabel(
-    typeof row.issuer === 'string' ? row.issuer : null,
-    typeof row.issuer_cnpj === 'string' ? row.issuer_cnpj : null,
+    typeof row['issuer'] === 'string' ? row['issuer'] : null,
+    typeof row['issuer_cnpj'] === 'string' ? row['issuer_cnpj'] : null,
   );
 }
 
 export function investmentAccountLabel(row: Record<string, unknown>): string {
-  return String(row.account_group_label ?? '—');
+  return String(row['account_group_label'] ?? '—');
 }
 
 export function investmentGroupConnectionLabel(row: Record<string, unknown>): string {
-  return String(row.connection_display_name ?? row.connector_name ?? row.connection_item_id ?? '—');
+  return String(
+    row['connection_display_name'] ?? row['connector_name'] ?? row['connection_item_id'] ?? '—',
+  );
 }
 
 export function investmentGroupKey(
@@ -103,11 +257,11 @@ export function investmentGroupKey(
 ): string {
   switch (groupBy) {
     case 'connection':
-      return String(row.connection_item_id ?? investmentGroupConnectionLabel(row));
+      return String(row['connection_item_id'] ?? investmentGroupConnectionLabel(row));
     case 'account':
-      return String(row.account_group_key ?? investmentAccountLabel(row));
+      return String(row['account_group_key'] ?? investmentAccountLabel(row));
     case 'name':
-      return String(row.display_name ?? row.name ?? '—');
+      return String(row['display_name'] ?? row['name'] ?? '—');
     default:
       return String(row[groupBy] ?? '—');
   }
@@ -123,7 +277,7 @@ export function investmentGroupLabel(
     case 'account':
       return investmentAccountLabel(row);
     case 'name':
-      return String(row.display_name ?? row.name ?? '—');
+      return String(row['display_name'] ?? row['name'] ?? '—');
     default:
       return String(row[groupBy] ?? '—');
   }
@@ -137,7 +291,7 @@ export function matchesInvestmentStatusFilter(
     return true;
   }
   const allowed = statusFilter.split(',').map((part) => part.trim().toUpperCase());
-  const status = String(row.status ?? 'UNKNOWN').toUpperCase();
+  const status = String(row['status'] ?? 'UNKNOWN').toUpperCase();
   return allowed.includes(status);
 }
 
@@ -150,13 +304,13 @@ export function filterInvestmentRows(
   if (search.trim()) {
     list = list.filter(
       (row) =>
-        matchesSearch(String(row.display_name ?? row.name ?? ''), search) ||
-        matchesSearch(String(row.code ?? ''), search) ||
-        matchesSearch(String(row.type ?? ''), search) ||
-        matchesSearch(String(row.subtype ?? ''), search) ||
-        matchesSearch(String(row.isin ?? ''), search) ||
+        matchesSearch(String(row['display_name'] ?? row['name'] ?? ''), search) ||
+        matchesSearch(String(row['code'] ?? ''), search) ||
+        matchesSearch(String(row['type'] ?? ''), search) ||
+        matchesSearch(String(row['subtype'] ?? ''), search) ||
+        matchesSearch(String(row['isin'] ?? ''), search) ||
         matchesSearch(String(investmentRateLabel(row) ?? ''), search) ||
-        matchesSearch(String(investmentIssuerLabel(row) ?? row.issuer ?? ''), search) ||
+        matchesSearch(String(investmentIssuerLabel(row) ?? row['issuer'] ?? ''), search) ||
         matchesSearch(investmentGroupConnectionLabel(row), search) ||
         matchesSearch(investmentAccountLabel(row), search),
     );
