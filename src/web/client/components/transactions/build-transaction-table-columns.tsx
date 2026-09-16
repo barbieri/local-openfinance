@@ -7,6 +7,7 @@ import {
   formatTransactionDateCellValue,
   formatTransactionDateColumnHeader,
 } from '../../lib/transaction-date-navigation.js';
+import { resolveTransactionVisibleColumns } from '../../lib/transaction-visible-columns.js';
 import { TransactionCategoryCell } from '../categories/TransactionCategoryCell.js';
 import { numericColumn } from '../data-table/column-meta.js';
 import { ForeignCurrencyAmount } from '../format/ForeignCurrencyAmount.js';
@@ -142,5 +143,9 @@ export function buildTransactionTableColumns(input: {
     }),
   ] as ColumnDef<TransactionRow, unknown>[];
 
-  return all.filter((col) => input.visibleColumns.has(col.id as TransactionColumnKey));
+  const effectiveVisibleColumns = resolveTransactionVisibleColumns(
+    input.visibleColumns,
+    input.filters,
+  );
+  return all.filter((col) => effectiveVisibleColumns.has(col.id as TransactionColumnKey));
 }

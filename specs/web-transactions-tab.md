@@ -59,6 +59,11 @@ Supported nested grouping dimensions:
 Grouped columns are automatically hidden from the visible table while preserving
 stored column preferences.
 
+The Advanced filters also hide their corresponding table columns while preserving
+stored column preferences. `transfers=hide` hides `transfer`, and
+`installments=hide` hides `installments`. Changing either filter back restores the
+column when it remains selected in the URL table state.
+
 Group headers expose:
 
 - select all
