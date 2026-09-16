@@ -130,6 +130,7 @@ export function buildTransactionFilterSummary(
     summarizeTextFilter(filters, context, 'q', 'filters.search'),
     summarizeTransfersFilter(filters, context),
     summarizeInstallmentsFilter(filters, context),
+    summarizeDeletedFilter(filters, context),
     summarizeClassificationFilter(filters, context),
   ].filter((part): part is TransactionFilterSummaryPart => part !== null);
 }
@@ -160,6 +161,8 @@ export function clearTransactionFilterPart(partId: string): Record<string, strin
       return { transfers: undefined };
     case 'installments':
       return { installments: undefined };
+    case 'deleted':
+      return { deleted: undefined };
     case 'classification':
       return { classification: undefined };
     case 'bill-id':
@@ -332,6 +335,20 @@ function summarizeInstallmentsFilter(
   return null;
 }
 
+function summarizeDeletedFilter(
+  filters: Record<string, string | string[]>,
+  context: TransactionFilterSummaryContext,
+): TransactionFilterSummaryPart | null {
+  const deleted = String(filters['deleted'] ?? '');
+  if (deleted === 'all') {
+    return filterPart('deleted', context.t('filters.deleted'), context.t('filters.deletedAll'));
+  }
+  if (deleted === 'only') {
+    return filterPart('deleted', context.t('filters.deleted'), context.t('filters.deletedOnly'));
+  }
+  return null;
+}
+
 function summarizeClassificationFilter(
   filters: Record<string, string | string[]>,
   context: TransactionFilterSummaryContext,
@@ -429,6 +446,7 @@ function appendTransactionFilterParams(
     ['description', 'description'],
     ['transfers', 'transfers'],
     ['installments', 'installments'],
+    ['deleted', 'deleted'],
     ['classification', 'classification'],
     ['bill-id', 'bill-id'],
   ];

@@ -73,4 +73,6 @@ export type TransactionDetailRow = {
     readonly can_change_bill_link: boolean;
   } | null;
   readonly raw_json: string;
+  readonly deleted_at: string | null;
+  readonly delete_reason: string | null;
 };

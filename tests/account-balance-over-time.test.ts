@@ -413,6 +413,59 @@ describe('loadTransactionChartSection balance', () => {
     expect(categoryFiltered.dailyBalance).toEqual(unfiltered.dailyBalance);
   });
 
+  it('uses the selected deleted visibility when reconstructing balances', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedConnection(db);
+    seedBankAccount(db, { id: 'acc-1', balanceCents: 100_000 });
+    seedTransaction(db, {
+      id: 'tx-live',
+      accountId: 'acc-1',
+      occurredAt: '2026-06-10T12:00:00.000Z',
+      amountCents: -10_000,
+    });
+    seedTransaction(db, {
+      id: 'tx-deleted',
+      accountId: 'acc-1',
+      occurredAt: '2026-06-11T12:00:00.000Z',
+      amountCents: -20_000,
+    });
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-deleted'",
+    ).run();
+
+    const balances = (deletedVisibility: 'all' | 'hide' | 'only') => {
+      const section = loadTransactionChartSection(
+        db,
+        {
+          ...BASE_FILTERS,
+          startDate: '2026-06-10',
+          endDate: '2026-06-11',
+          deletedVisibility,
+        },
+        'UTC',
+        'balance',
+      );
+      if (section.chart !== 'balance') {
+        throw new Error('expected balance chart');
+      }
+      return section.dailyBalance.map(({ date, balance }) => ({ date, balance }));
+    };
+
+    expect(balances('hide')).toEqual([
+      { date: '2026-06-10', balance: 100_000 },
+      { date: '2026-06-11', balance: 100_000 },
+    ]);
+    expect(balances('all')).toEqual([
+      { date: '2026-06-10', balance: 120_000 },
+      { date: '2026-06-11', balance: 100_000 },
+    ]);
+    expect(balances('only')).toEqual([
+      { date: '2026-06-10', balance: 120_000 },
+      { date: '2026-06-11', balance: 100_000 },
+    ]);
+  });
+
   it('returns a warning when no bank accounts are in scope', () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);

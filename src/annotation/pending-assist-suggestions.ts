@@ -68,7 +68,8 @@ const PENDING_ASSIST_SUGGESTIONS_WHERE = `
       FROM entry_annotations ea
       WHERE ea.entry_type = 'transaction' AND ea.entry_id = t.id
     )
-    AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}`;
+    AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+    AND t.deleted_at IS NULL`;
 
 const PENDING_ASSIST_SUGGESTIONS_CTE = `
 WITH pending_assist_suggestions AS (

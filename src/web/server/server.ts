@@ -42,6 +42,7 @@ import {
 import type { EnrichedAccount } from '../../db/account-list-details.js';
 import { listEnrichedAccounts, listEnrichedCreditCards } from '../../db/account-list-details.js';
 import { formatAccountDetailsPlain } from '../../db/accounts/present.js';
+import { TransactionNotActiveError } from '../../db/active-transaction-write.js';
 import {
   countAnnotationLabelUsage,
   createAnnotationLabel,
@@ -479,6 +480,9 @@ export function createWebApp(ctx: WebServerContext): Hono {
       notes?: string | null;
       source?: 'manual' | 'suggested';
     }>(c, 'saveEntryAnnotation');
+    if (!loadAnnotatableEntry(ctx.db, body.entryType, body.entryId)) {
+      throw new HTTPException(404, { message: 'Entry not found' });
+    }
     const labelIds =
       (body.labelIds ?? []).length > 0
         ? [...new Set(body.labelIds ?? [])]
@@ -519,6 +523,9 @@ export function createWebApp(ctx: WebServerContext): Hono {
   app.onError((error, c) => {
     if (error instanceof HTTPException) {
       return error.getResponse();
+    }
+    if (error instanceof TransactionNotActiveError) {
+      return c.json({ error: 'Transaction not found' }, 404);
     }
     if (isSqliteQueryError(error)) {
       return c.json({ error: formatSqliteUserMessage(error) }, 500);

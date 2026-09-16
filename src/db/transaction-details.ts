@@ -265,6 +265,7 @@ export function loadTransactions(db: DatabaseSync): TransactionRow[] {
        JOIN connections c ON c.item_id = a.connection_item_id
        LEFT JOIN categories cat ON cat.id = t.category_id
        WHERE ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+         AND t.deleted_at IS NULL
        ORDER BY t.occurred_at ASC, t.id ASC`,
     )
     .all()
@@ -649,6 +650,7 @@ function loadTransactionTransferGroup(
        WHERE other_tgm.group_id = ?
          AND other_tgm.entry_type = 'transaction'
          AND other_tgm.entry_id != ?
+         AND other_t.deleted_at IS NULL
        LIMIT 1`,
     )
     .get(groupId, transactionId) as Record<string, unknown> | undefined;

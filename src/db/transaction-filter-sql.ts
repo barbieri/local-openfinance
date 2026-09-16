@@ -1,6 +1,7 @@
 import type { SQLInputValue } from 'node:sqlite';
 import { buildConfirmedTransactionClassificationSql } from '../annotation/classification-policy.js';
 import { toLocalDateKey } from '../utils/local-date.js';
+import { appendDeletedVisibilityPredicate, type DeletedVisibility } from './entry-deletion.js';
 import { TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL } from './transaction-foreign-amount.js';
 
 export type TransactionClassificationFilter = 'all' | 'classified' | 'unclassified';
@@ -15,6 +16,7 @@ export type TransactionCommonSqlFilters = {
   readonly transfers: TransactionTransferFilter;
   readonly useCreditPurchaseDate: boolean;
   readonly minAbsoluteAmountCents: number | null;
+  readonly deletedVisibility?: DeletedVisibility | undefined;
 };
 
 export type TransactionSqlWhere = {
@@ -65,6 +67,7 @@ export function appendTransactionCommonFilters(
   appendClassificationFilter(parts, filters.classification);
   appendTransfersFilter(parts, filters.transfers);
   appendMinimumAmountFilter(parts, params, filters.minAbsoluteAmountCents);
+  appendDeletedVisibilityPredicate(parts, 't.deleted_at', filters.deletedVisibility ?? 'hide');
 }
 
 function appendTransactionIdsFilter(

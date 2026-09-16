@@ -2,24 +2,9 @@ import { useTranslation } from 'react-i18next';
 import { InstallmentApplyCheckbox } from './InstallmentApplyCheckbox.js';
 import { SelectedTransactionsApplyCheckbox } from './SelectedTransactionsApplyCheckbox.js';
 
-export function TransactionEditFooter({
-  mode,
-  busy,
-  totalInstallments,
-  applyToInstallmentSiblings,
-  onApplyToInstallmentSiblingsChange,
-  otherSelectedTransactionCount,
-  applyToSelectedTransactions,
-  onApplyToSelectedTransactionsChange,
-  assistPending,
-  assistLoadedFromCache,
-  savePending,
-  onDismiss,
-  onAssist,
-  onRecreateAssist,
-  onSave,
-}: {
+type TransactionEditFooterProps = {
   readonly mode: 'detail' | 'triage';
+  readonly editable: boolean;
   readonly busy: boolean;
   readonly totalInstallments: number;
   readonly applyToInstallmentSiblings: boolean;
@@ -34,59 +19,103 @@ export function TransactionEditFooter({
   readonly onAssist: () => void;
   readonly onRecreateAssist: () => void;
   readonly onSave: () => void;
-}) {
+  readonly onDelete?: () => void;
+};
+
+function TransactionEditOptions({
+  mode,
+  editable,
+  busy,
+  totalInstallments,
+  applyToInstallmentSiblings,
+  onApplyToInstallmentSiblingsChange,
+  otherSelectedTransactionCount,
+  applyToSelectedTransactions,
+  onApplyToSelectedTransactionsChange,
+}: TransactionEditFooterProps) {
+  if (!editable) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <InstallmentApplyCheckbox
+        totalInstallments={totalInstallments}
+        checked={applyToInstallmentSiblings}
+        disabled={busy}
+        onChange={onApplyToInstallmentSiblingsChange}
+      />
+      {mode === 'detail' ? (
+        <SelectedTransactionsApplyCheckbox
+          count={otherSelectedTransactionCount}
+          checked={applyToSelectedTransactions}
+          disabled={busy}
+          onChange={onApplyToSelectedTransactionsChange}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function TransactionEditActions({
+  mode,
+  editable,
+  busy,
+  assistPending,
+  assistLoadedFromCache,
+  savePending,
+  onDismiss,
+  onAssist,
+  onRecreateAssist,
+  onSave,
+  onDelete,
+}: TransactionEditFooterProps) {
   const { t } = useTranslation();
   const isDetailMode = mode === 'detail';
 
   return (
-    <div className="sticky bottom-0 z-10 -mx-4 flex w-[calc(100%+2rem)] flex-col gap-3 border-t border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex flex-col gap-2">
-        <InstallmentApplyCheckbox
-          totalInstallments={totalInstallments}
-          checked={applyToInstallmentSiblings}
-          disabled={busy}
-          onChange={onApplyToInstallmentSiblingsChange}
-        />
-        {isDetailMode ? (
-          <SelectedTransactionsApplyCheckbox
-            count={otherSelectedTransactionCount}
-            checked={applyToSelectedTransactions}
-            disabled={busy}
-            onChange={onApplyToSelectedTransactionsChange}
-          />
-        ) : null}
-      </div>
-      <div className="flex flex-wrap justify-end gap-2">
+    <div className="flex flex-wrap justify-end gap-2">
+      {isDetailMode && editable && onDelete ? (
         <button
           type="button"
-          className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
+          className="mr-3 rounded border border-destructive px-3 py-1.5 text-sm text-destructive disabled:opacity-50"
           disabled={busy}
-          onClick={onDismiss}
+          onClick={onDelete}
         >
-          {isDetailMode ? t('classify.skip') : t('triage.skip')}
+          {t('softDelete.delete')}
         </button>
-        {isDetailMode ? (
-          <>
+      ) : null}
+      <button
+        type="button"
+        className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
+        disabled={busy}
+        onClick={onDismiss}
+      >
+        {isDetailMode ? t('classify.skip') : t('triage.skip')}
+      </button>
+      {isDetailMode && editable ? (
+        <>
+          <button
+            type="button"
+            className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
+            disabled={busy}
+            onClick={onAssist}
+          >
+            {assistPending ? t('transactionDetail.assistRunning') : t('transactionDetail.assist')}
+          </button>
+          {assistLoadedFromCache ? (
             <button
               type="button"
               className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
               disabled={busy}
-              onClick={onAssist}
+              onClick={onRecreateAssist}
             >
-              {assistPending ? t('transactionDetail.assistRunning') : t('transactionDetail.assist')}
+              {t('transactionDetail.assistRecreate')}
             </button>
-            {assistLoadedFromCache && (
-              <button
-                type="button"
-                className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
-                disabled={busy}
-                onClick={onRecreateAssist}
-              >
-                {t('transactionDetail.assistRecreate')}
-              </button>
-            )}
-          </>
-        ) : null}
+          ) : null}
+        </>
+      ) : null}
+      {editable ? (
         <button
           type="button"
           className="rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50"
@@ -99,7 +128,16 @@ export function TransactionEditFooter({
               ? t('triage.accepting')
               : t('triage.accept')}
         </button>
-      </div>
+      ) : null}
+    </div>
+  );
+}
+
+export function TransactionEditFooter(props: TransactionEditFooterProps) {
+  return (
+    <div className="sticky bottom-0 z-10 -mx-4 flex w-[calc(100%+2rem)] flex-col gap-3 border-t border-border bg-background px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <TransactionEditOptions {...props} />
+      <TransactionEditActions {...props} />
     </div>
   );
 }

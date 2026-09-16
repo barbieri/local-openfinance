@@ -12,12 +12,13 @@ export function listRecentSyncTransferCandidateIds(
       `WITH recent AS (
          SELECT MIN(date(occurred_at)) AS first_date
          FROM transactions
-         WHERE synced_at = ?
+         WHERE synced_at = ? AND deleted_at IS NULL
        )
        SELECT id
        FROM transactions
-       WHERE synced_at = ?
-          OR date(occurred_at) = date((SELECT first_date FROM recent), '-1 day')`,
+       WHERE deleted_at IS NULL
+         AND (synced_at = ?
+          OR date(occurred_at) = date((SELECT first_date FROM recent), '-1 day'))`,
     )
     .all(syncedAt, syncedAt)
     .map((row) => String((row as Record<string, unknown>)['id']));

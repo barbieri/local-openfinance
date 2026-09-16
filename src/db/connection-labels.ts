@@ -165,6 +165,7 @@ export function listConnectionRecentTransactions(
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
        WHERE a.connection_item_id = ?
+         AND t.deleted_at IS NULL
        ORDER BY t.occurred_at DESC
        LIMIT ?`,
     )
@@ -185,6 +186,7 @@ export function listAccountRecentTransactions(
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
        WHERE t.account_id = ?
+         AND t.deleted_at IS NULL
        ORDER BY t.occurred_at DESC
        LIMIT ?`,
     )

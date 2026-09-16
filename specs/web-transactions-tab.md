@@ -132,6 +132,24 @@ Use the Assist button to:
 Triage mode pre-fills from the queue proposal and differs only in save/dismiss
 flow.
 
+## Deleted transactions
+
+Deleting a transaction sets soft-deletion metadata. The transaction remains in
+the database and its permalink stays available. Detail mode shows a deletion
+banner with the reason and timestamp.
+
+The Advanced sidebar filter defaults to Hide deleted. It also offers Show all
+and Deleted only. The list, balance chart, export, transfer detection, triage,
+assist, and reports exclude deleted transactions unless a caller explicitly
+requests a different visibility. Balance chart visibility follows the selected
+deleted filter for all three modes.
+
+The detail dialog deletes the current transaction. If Update all selected
+transactions is checked, it also deletes only those explicit selected ids. It
+never infers installment siblings. It removes deleted ids from the page
+selection. Deleted details stay readable, but cannot assist, classify, relink,
+or update credit-card bill links.
+
 ## Installments
 
 Installment rows after the first show a plan summary.

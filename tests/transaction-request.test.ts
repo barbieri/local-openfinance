@@ -46,3 +46,12 @@ describe('buildTransactionFilterQuery', () => {
     );
   });
 });
+
+describe('deleted transaction visibility', () => {
+  it('defaults to hidden and preserves explicit all and only values', () => {
+    expect(parseTransactionWebFilters({}).deletedVisibility).toBe('hide');
+    expect(parseTransactionWebFilters({ deleted: 'all' }).deletedVisibility).toBe('all');
+    expect(parseTransactionWebFilters({ deleted: 'only' }).deletedVisibility).toBe('only');
+    expect(parseTransactionWebFilters({ deleted: 'invalid' }).deletedVisibility).toBe('hide');
+  });
+});

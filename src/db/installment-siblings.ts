@@ -163,7 +163,8 @@ export function getInstallmentPlanInfo(
       `SELECT id, amount_cents, merchant_name, description, raw_json
        FROM transactions
        WHERE account_id = ?
-         AND id != ?`,
+         AND id != ?
+         AND deleted_at IS NULL`,
     )
     .all(anchor.account_id, transactionId) as Array<
     Pick<

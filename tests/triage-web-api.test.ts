@@ -66,6 +66,195 @@ describe('classify triage web API', () => {
     expect(detail.transaction.id).toBe('tx-1');
   });
 
+  it('soft deletes only explicit transaction ids and keeps a deleted detail permalink readable', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedTriageTransaction(db);
+    db.prepare(
+      `INSERT INTO transactions (id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at)
+       VALUES ('tx-2', 'acct-1', '2026-06-02T12:00:00.000Z', -2000, 'BRL', 'Second', '{}', '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    process.env['LOCAL_OPENFINANCE_WEB_TOKEN'] = 'test-token';
+    const app = createWebApp({
+      db,
+      resolved: { config: { storage: { databasePath: ':memory:' }, annotation: {} } } as never,
+      jobs: new BackgroundJobManager(),
+    });
+    const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+
+    const deleted = await app.request('/api/transactions/tx-1/delete', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        additionalTransactionIds: ['tx-2'],
+        deleteReason: 'provider duplicate',
+      }),
+    });
+    expect(deleted.status).toBe(200);
+    await expect(deleted.json()).resolves.toMatchObject({
+      requestedIds: ['tx-1', 'tx-2'],
+      newlyDeletedIds: ['tx-1', 'tx-2'],
+    });
+    expect(
+      db.prepare('SELECT deleted_at, delete_reason FROM transactions WHERE id = ?').get('tx-2'),
+    ).toMatchObject({ delete_reason: 'provider duplicate' });
+
+    const detail = await app.request('/api/transactions/tx-1', { headers });
+    expect(detail.status).toBe(200);
+    await expect(detail.json()).resolves.toMatchObject({
+      transaction: { id: 'tx-1', delete_reason: 'provider duplicate' },
+    });
+    const queue = await app.request('/api/classify/triage?limit=1&offset=0', { headers });
+    await expect(queue.json()).resolves.toEqual({ pending: 0, items: [] });
+
+    const assist = await app.request('/api/classify/assist', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ entryType: 'transaction', entryId: 'tx-1' }),
+    });
+    expect(assist.status).toBe(404);
+
+    const classification = await app.request('/api/transactions/tx-1/classification', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+    expect(classification.status).toBe(404);
+  });
+
+  it('rejects an atomic delete when an explicit selected id is missing', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedTriageTransaction(db);
+    process.env['LOCAL_OPENFINANCE_WEB_TOKEN'] = 'test-token';
+    const app = createWebApp({
+      db,
+      resolved: { config: { storage: { databasePath: ':memory:' }, annotation: {} } } as never,
+      jobs: new BackgroundJobManager(),
+    });
+    const response = await app.request('/api/transactions/tx-1/delete', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ additionalTransactionIds: ['missing'] }),
+    });
+    expect(response.status).toBe(404);
+    expect(db.prepare('SELECT deleted_at FROM transactions WHERE id = ?').get('tx-1')).toEqual({
+      deleted_at: null,
+    });
+  });
+
+  it('does not expose transfer suggestions with a deleted leg', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedTriageTransaction(db);
+    db.prepare(
+      `INSERT INTO transactions (id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at)
+       VALUES ('tx-2', 'acct-1', '2026-06-02T12:00:00.000Z', 1000, 'BRL', 'Other', '{}', '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO transfer_link_suggestions (
+         source_entry_id, destination_entry_id, kind, confidence, amount_confidence, time_confidence, created_at
+       ) VALUES ('tx-1', 'tx-2', 'internal_transfer', 0.9, 1, 1, '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-2'",
+    ).run();
+    process.env['LOCAL_OPENFINANCE_WEB_TOKEN'] = 'test-token';
+    const app = createWebApp({
+      db,
+      resolved: { config: { storage: { databasePath: ':memory:' }, annotation: {} } } as never,
+      jobs: new BackgroundJobManager(),
+    });
+
+    const response = await app.request('/api/transfers/suggestions/tx-1', {
+      headers: { Authorization: 'Bearer test-token' },
+    });
+    await expect(response.json()).resolves.toEqual({ suggestion: null });
+  });
+
+  it('rejects every mutation endpoint after a transaction is deleted', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedTriageTransaction(db);
+    db.prepare(
+      `INSERT INTO categories (id, name, name_translated, parent_id, raw_json, synced_at)
+       VALUES ('cat-1', 'Category 1', 'Category 1', NULL, '{}', '2026-06-10T00:00:00.000Z'),
+              ('cat-2', 'Category 2', 'Category 2', NULL, '{}', '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO transaction_category_overrides (transaction_id, category_id, updated_at)
+       VALUES ('tx-1', 'cat-1', '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO credit_card_bills (
+         id, account_id, due_date, total_amount_cents, minimum_payment_cents,
+         payment_status, currency, raw_json, synced_at
+       ) VALUES (
+         'bill-1', 'acct-1', '2026-06-15', 10000, 500,
+         'OPEN', 'BRL', '{}', '2026-06-10T00:00:00.000Z'
+       )`,
+    ).run();
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-1'",
+    ).run();
+    process.env['LOCAL_OPENFINANCE_WEB_TOKEN'] = 'test-token';
+    const app = createWebApp({
+      db,
+      resolved: { config: { storage: { databasePath: ':memory:' }, annotation: {} } } as never,
+      jobs: new BackgroundJobManager(),
+    });
+    const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+
+    const category = await app.request('/api/transactions/tx-1/category-override', {
+      method: 'PUT',
+      headers,
+      body: JSON.stringify({ categoryId: 'cat-2' }),
+    });
+    const clearCategory = await app.request('/api/transactions/tx-1/category-override', {
+      method: 'DELETE',
+      headers,
+    });
+    const billLink = await app.request('/api/transactions/tx-1/bill-link', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ billId: 'bill-1' }),
+    });
+    const triage = await app.request('/api/classify/triage/tx-1/apply', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({}),
+    });
+    const annotation = await app.request('/api/classify', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ entryType: 'transaction', entryId: 'tx-1', notes: 'Deleted' }),
+    });
+
+    expect(category.status).toBe(404);
+    expect(clearCategory.status).toBe(404);
+    expect(billLink.status).toBe(404);
+    expect(triage.status).toBe(404);
+    expect(annotation.status).toBe(404);
+    expect(
+      db
+        .prepare(
+          `SELECT transaction_id, category_id
+           FROM transaction_category_overrides WHERE transaction_id = 'tx-1'`,
+        )
+        .get(),
+    ).toEqual({ transaction_id: 'tx-1', category_id: 'cat-1' });
+    expect(db.prepare('SELECT * FROM credit_card_bill_transactions').all()).toEqual([]);
+    expect(db.prepare('SELECT * FROM entry_annotations').all()).toEqual([]);
+    expect(
+      db
+        .prepare(
+          `SELECT review_status FROM annotation_assist_suggestions
+           WHERE entry_type = 'transaction' AND entry_id = 'tx-1'`,
+        )
+        .get(),
+    ).toEqual({ review_status: 'pending' });
+  });
+
   it('normalizes legacy proposals missing labelIds', async () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);

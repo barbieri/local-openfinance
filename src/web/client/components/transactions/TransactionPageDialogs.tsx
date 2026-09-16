@@ -9,6 +9,7 @@ export function TransactionPageDialogs({
   detailEditIds,
   onCloseDetail,
   onDetailSaved,
+  onDetailDeleted,
   onOpenTransaction,
   currentClassify,
   onCloseClassify,
@@ -24,6 +25,7 @@ export function TransactionPageDialogs({
   readonly detailEditIds: readonly string[];
   readonly onCloseDetail: () => void;
   readonly onDetailSaved: () => Promise<void>;
+  readonly onDetailDeleted: (deletedIds: readonly string[]) => void;
   readonly onOpenTransaction: (transactionId: string) => Promise<void>;
   readonly currentClassify: TransactionRow | undefined;
   readonly onCloseClassify: () => void;
@@ -43,6 +45,7 @@ export function TransactionPageDialogs({
         open={detailTransaction !== null}
         onClose={onCloseDetail}
         onSaved={onDetailSaved}
+        onDeleted={onDetailDeleted}
         onOpenTransaction={onOpenTransaction}
       />
 

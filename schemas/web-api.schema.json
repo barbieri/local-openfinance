@@ -127,6 +127,18 @@
         "billId": { "type": "string", "minLength": 1 }
       }
     },
+    "softDeleteTransaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "additionalTransactionIds": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "maxItems": 500
+        },
+        "deleteReason": { "type": ["string", "null"], "maxLength": 4000 }
+      }
+    },
     "saveIntelligenceMemory": {
       "type": "object",
       "additionalProperties": false,

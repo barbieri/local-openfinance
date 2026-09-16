@@ -16,6 +16,7 @@ export function TransactionDetailDialog({
   open,
   onClose,
   onSaved,
+  onDeleted,
   onOpenTransaction,
 }: {
   readonly transaction: TransactionDetailRow | null;
@@ -23,6 +24,7 @@ export function TransactionDetailDialog({
   readonly open: boolean;
   readonly onClose: () => void;
   readonly onSaved: () => void | Promise<void>;
+  readonly onDeleted: (deletedIds: readonly string[]) => void | Promise<void>;
   readonly onOpenTransaction?: (transactionId: string) => void | Promise<void>;
 }) {
   const { data: annotationLabelsData } = useQuery({
@@ -54,6 +56,7 @@ export function TransactionDetailDialog({
         onOpenTransaction={onOpenTransaction}
         onDismiss={onClose}
         onSaved={onSaved}
+        onDeleted={onDeleted}
       />
     </Dialog>
   );

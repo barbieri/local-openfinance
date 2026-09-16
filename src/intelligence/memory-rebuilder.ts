@@ -171,7 +171,7 @@ export function parseRebuildMemoryQuantity(value: string): RebuildMemoryQuantity
 function readEarliestTransactionDate(db: DatabaseSync, timeZone: string): string | null {
   const row = db
     .prepare(
-      `SELECT MIN(${TRANSACTION_CREDIT_PURCHASE_DATE_SQL}) AS occurred_at FROM transactions t`,
+      `SELECT MIN(${TRANSACTION_CREDIT_PURCHASE_DATE_SQL}) AS occurred_at FROM transactions t WHERE t.deleted_at IS NULL`,
     )
     .get() as { readonly occurred_at?: unknown };
   return typeof row.occurred_at === 'string' ? toLocalDateKey(row.occurred_at, timeZone) : null;

@@ -5,7 +5,11 @@ import {
   suggestAnnotationAssist,
 } from '../src/annotation/assist.js';
 import { loadTransactionEntry } from '../src/annotation/feature-text.js';
-import { ensureAnnotationLabel, saveEntryAnnotation } from '../src/annotation/store.js';
+import {
+  ensureAnnotationLabel,
+  loadAnnotatableEntry,
+  saveEntryAnnotation,
+} from '../src/annotation/store.js';
 import { migrateDatabase } from '../src/db/migrate.js';
 import { upsertTransactionCategoryOverride } from '../src/db/transaction-category-overrides.js';
 import { embedScoringText, proposeAnnotationFromExamples } from '../src/scoring/providers.js';
@@ -54,6 +58,22 @@ function seedCategories(db: DatabaseSync): void {
 }
 
 describe('suggestAnnotationAssist', () => {
+  it('does not load deleted transactions as assistable entries', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedAccount(db);
+    db.prepare(
+      `INSERT INTO transactions (
+        id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at, deleted_at
+      ) VALUES (
+        'tx-deleted', 'acct-1', '2026-06-10T12:00:00.000Z', -5000, 'BRL', 'Deleted', '{}',
+        '2026-06-10T00:00:00.000Z', '2026-09-15T12:00:00.000Z'
+      )`,
+    ).run();
+
+    expect(loadAnnotatableEntry(db, 'transaction', 'tx-deleted')).toBeNull();
+  });
+
   it('reports missing scoring config', async () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);

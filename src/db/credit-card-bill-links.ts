@@ -3,6 +3,7 @@ import { readFieldString } from '../openfinance/money.js';
 import { parseTransactionCreditCardMetadata } from '../openfinance/transaction-metadata.js';
 import { addCalendarDays } from '../utils/calendar-days.js';
 import { creditDataFromAccountRow } from './account-details.js';
+import { withActiveTransactionWrite } from './active-transaction-write.js';
 
 export type CreditCardBillLinkSource = 'transaction_metadata' | 'inferred' | 'manual';
 
@@ -70,32 +71,32 @@ export function setManualCreditCardBillLink(
   billId: string,
   syncedAt: string,
 ): void {
-  const bill = db
-    .prepare('SELECT id, account_id FROM credit_card_bills WHERE id = ?')
-    .get(billId) as Record<string, unknown> | undefined;
-  if (!bill) {
-    throw new Error('Bill not found');
-  }
+  withActiveTransactionWrite(db, [transactionId], () => {
+    const bill = db
+      .prepare('SELECT id, account_id FROM credit_card_bills WHERE id = ?')
+      .get(billId) as Record<string, unknown> | undefined;
+    if (!bill) {
+      throw new Error('Bill not found');
+    }
 
-  const transaction = db
-    .prepare('SELECT id, account_id FROM transactions WHERE id = ?')
-    .get(transactionId) as Record<string, unknown> | undefined;
-  if (!transaction) {
-    throw new Error('Transaction not found');
-  }
-  if (String(transaction['account_id']) !== String(bill['account_id'])) {
-    throw new Error('Bill and transaction must belong to the same credit card account');
-  }
+    const transaction = db
+      .prepare('SELECT id, account_id FROM transactions WHERE id = ?')
+      .get(transactionId) as Record<string, unknown>;
+    if (String(transaction['account_id']) !== String(bill['account_id'])) {
+      throw new Error('Bill and transaction must belong to the same credit card account');
+    }
 
-  const existing = loadCreditCardBillLink(db, transactionId);
-  if (existing?.source === 'transaction_metadata') {
-    throw new Error('Cannot override a bill link provided by transaction metadata');
-  }
+    const existing = loadCreditCardBillLink(db, transactionId);
+    if (existing?.source === 'transaction_metadata') {
+      throw new Error('Cannot override a bill link provided by transaction metadata');
+    }
 
-  db.prepare('DELETE FROM credit_card_bill_transactions WHERE transaction_id = ?').run(
-    transactionId,
-  );
-  upsertBillLink(db, billId, transactionId, 'manual', 100, syncedAt);
+    db.prepare('DELETE FROM credit_card_bill_transactions WHERE transaction_id = ?').run(
+      transactionId,
+    );
+    upsertBillLink(db, billId, transactionId, 'manual', 100, syncedAt);
+    return undefined;
+  });
 }
 
 export function canChangeCreditCardBillLink(
@@ -120,7 +121,7 @@ function linkTransactionsFromMetadata(
     .prepare(
       `SELECT t.id, t.raw_json
        FROM transactions t
-       WHERE t.account_id = ?`,
+       WHERE t.account_id = ? AND t.deleted_at IS NULL`,
     )
     .all(accountId) as Record<string, unknown>[];
 
@@ -178,7 +179,7 @@ function linkTransactionsInferred(db: DatabaseSync, accountId: string, syncedAt:
     .prepare(
       `SELECT t.id, t.occurred_at, t.raw_json
        FROM transactions t
-       WHERE t.account_id = ?`,
+       WHERE t.account_id = ? AND t.deleted_at IS NULL`,
     )
     .all(accountId) as Record<string, unknown>[];
 

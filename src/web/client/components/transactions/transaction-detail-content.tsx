@@ -54,6 +54,26 @@ function DetailField({
   );
 }
 
+function DeletedTransactionBanner({ transaction }: { readonly transaction: TransactionDetailRow }) {
+  const { t } = useTranslation();
+  if (!transaction.deleted_at) {
+    return null;
+  }
+  return (
+    <section className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-destructive">
+      <h3 className="font-semibold">{t('softDelete.deletedBanner')}</h3>
+      <p className="mt-1 text-sm">
+        {t('softDelete.deletedAt')} <FormattedDateTime value={transaction.deleted_at} />
+      </p>
+      {transaction.delete_reason ? (
+        <p className="mt-1 text-sm">
+          {t('softDelete.deletedReason', { reason: transaction.delete_reason })}
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
 function resolveBillLinkSourceLabel(
   source: string | null | undefined,
   t: ReturnType<typeof useTranslation>['t'],
@@ -137,7 +157,7 @@ function CreditCardBillSection({
             {resolveBillLinkSourceLabel(creditCard.bill_link_source, t)}
           </DetailField>
         ) : null}
-        {creditCard.can_change_bill_link && accountBills.length > 0 ? (
+        {creditCard.can_change_bill_link && !transaction.deleted_at && accountBills.length > 0 ? (
           <label className="flex min-w-[12rem] flex-col gap-1 text-sm">
             <span className="text-xs font-medium uppercase text-muted-foreground">
               {t('transactionDetail.changeBill')}
@@ -650,6 +670,37 @@ function PendingTransferSection({
   );
 }
 
+function LinkedTransferSection({
+  transaction,
+  onUnlinkTransfer,
+  unlinkPending,
+}: Pick<TransactionDetailContentProps, 'transaction' | 'onUnlinkTransfer' | 'unlinkPending'>) {
+  const { t } = useTranslation();
+  const related = transaction.transfer_group?.related;
+  if (!related) {
+    return null;
+  }
+
+  return (
+    <section className="space-y-2 rounded-md border border-border p-3">
+      <div className="flex items-center justify-between gap-2">
+        <h3 className="font-medium">{t('transactionDetail.linkedTransfer')}</h3>
+        {!transaction.deleted_at ? (
+          <button
+            type="button"
+            className="rounded border border-border px-2 py-0.5 text-xs hover:bg-accent"
+            disabled={unlinkPending}
+            onClick={() => onUnlinkTransfer(transaction.transfer_group?.id ?? '')}
+          >
+            {t('transactionDetail.unlink')}
+          </button>
+        ) : null}
+      </div>
+      <LinkedTransferSummary related={related} />
+    </section>
+  );
+}
+
 export function TransactionDetailContent({
   transaction,
   active,
@@ -678,6 +729,7 @@ export function TransactionDetailContent({
 
   return (
     <div className="min-w-0 space-y-4 text-sm">
+      <DeletedTransactionBanner transaction={transaction} />
       <section className="min-w-0 space-y-1">
         <DetailField label={t('columns.merchant')}>
           {transaction.merchant_detail?.business_name ??
@@ -750,42 +802,35 @@ export function TransactionDetailContent({
           />
         )}
 
-      <TransactionClassificationForm
+      {!transaction.deleted_at ? (
+        <>
+          <TransactionClassificationForm
+            transaction={transaction}
+            categoryOverrideId={categoryOverrideId}
+            onCategoryOverrideIdChange={onCategoryOverrideIdChange}
+            annotationCategoryId={annotationCategoryId}
+            onAnnotationCategoryIdChange={onAnnotationCategoryIdChange}
+            annotationSubCategoryId={annotationSubCategoryId}
+            onAnnotationSubCategoryIdChange={onAnnotationSubCategoryIdChange}
+            selectedLabelIds={selectedLabelIds}
+            onSelectedLabelIdsChange={onSelectedLabelIdsChange}
+            notes={notes}
+            onNotesChange={onNotesChange}
+            enabled={active}
+          />
+
+          <PendingTransferSection
+            transactionId={transaction.id}
+            linked={Boolean(transaction.transfer_group)}
+          />
+        </>
+      ) : null}
+
+      <LinkedTransferSection
         transaction={transaction}
-        categoryOverrideId={categoryOverrideId}
-        onCategoryOverrideIdChange={onCategoryOverrideIdChange}
-        annotationCategoryId={annotationCategoryId}
-        onAnnotationCategoryIdChange={onAnnotationCategoryIdChange}
-        annotationSubCategoryId={annotationSubCategoryId}
-        onAnnotationSubCategoryIdChange={onAnnotationSubCategoryIdChange}
-        selectedLabelIds={selectedLabelIds}
-        onSelectedLabelIdsChange={onSelectedLabelIdsChange}
-        notes={notes}
-        onNotesChange={onNotesChange}
-        enabled={active}
+        onUnlinkTransfer={onUnlinkTransfer}
+        unlinkPending={unlinkPending}
       />
-
-      <PendingTransferSection
-        transactionId={transaction.id}
-        linked={Boolean(transaction.transfer_group)}
-      />
-
-      {transaction.transfer_group?.related && (
-        <section className="space-y-2 rounded-md border border-border p-3">
-          <div className="flex items-center justify-between gap-2">
-            <h3 className="font-medium">{t('transactionDetail.linkedTransfer')}</h3>
-            <button
-              type="button"
-              className="rounded border border-border px-2 py-0.5 text-xs hover:bg-accent"
-              disabled={unlinkPending}
-              onClick={() => onUnlinkTransfer(transaction.transfer_group?.id ?? '')}
-            >
-              {t('transactionDetail.unlink')}
-            </button>
-          </div>
-          <LinkedTransferSummary related={transaction.transfer_group.related} />
-        </section>
-      )}
 
       <details className="rounded-md border border-border p-3">
         <summary className="cursor-pointer font-medium">{t('classify.rawJson')}</summary>

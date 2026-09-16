@@ -142,4 +142,48 @@ describe('saveTransactionClassification', () => {
       expect(annotation.notes).toBe('Batch edit');
     }
   });
+
+  it('rejects a deleted anchor before classifying any installment sibling', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    seedInstallment(db, 'tx-1', 1, 'cat-a');
+    seedInstallment(db, 'tx-2', 2, 'cat-a');
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-1'",
+    ).run();
+
+    await expect(
+      saveTransactionClassification(db, config, 'tx-1', {
+        categoryOverrideId: 'cat-b',
+        labelIds: ['travel'],
+        applyToInstallmentSiblings: true,
+      }),
+    ).rejects.toThrow('Transaction not found');
+
+    expect(db.prepare('SELECT * FROM transaction_category_overrides').all()).toEqual([]);
+    expect(db.prepare('SELECT * FROM entry_annotations').all()).toEqual([]);
+  });
+
+  it('rejects a deleted explicit target before classifying the active anchor', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    seedTransaction(db, 'tx-1', 'cat-a');
+    seedTransaction(db, 'tx-2', 'cat-a');
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-2'",
+    ).run();
+
+    await expect(
+      saveTransactionClassification(db, config, 'tx-1', {
+        categoryOverrideId: 'cat-b',
+        notes: 'Atomic batch',
+        applyToTransactionIds: ['tx-2'],
+      }),
+    ).rejects.toThrow('Transaction not found');
+
+    expect(db.prepare('SELECT * FROM transaction_category_overrides').all()).toEqual([]);
+    expect(db.prepare('SELECT * FROM entry_annotations').all()).toEqual([]);
+  });
 });

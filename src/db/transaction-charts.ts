@@ -203,7 +203,7 @@ function loadTrueBalanceChartSection(
   filters: TransactionWebListFilters,
   timeZone: string,
 ): TransactionChartBalanceSection {
-  const accountScopeWhere = buildTransactionBalanceScopeWhere(filters, 'a.id');
+  const accountScopeWhere = buildTransactionBalanceScopeWhere(filters, 'a.id', false);
   const transactionScopeWhere = buildTransactionBalanceScopeWhere(filters);
   const anchorRows = loadBalanceChartAnchors(db, accountScopeWhere);
   const anchors = mapBalanceChartAnchors(anchorRows);

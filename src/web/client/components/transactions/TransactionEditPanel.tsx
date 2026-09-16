@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
 import { apiJson } from '../../lib/api.js';
 import type { LabelRecord } from '../labels/LabelEditDialog.js';
+import { SoftDeleteDialog } from '../ui/SoftDeleteDialog.js';
 import { TransactionEditFooter } from './TransactionEditFooter.js';
 import {
   applyAssistProposal,
@@ -64,6 +65,7 @@ type TransactionEditPanelProps = {
     readonly reasoning: string | null;
     readonly totalInstallments: number | null;
   }) => void;
+  readonly onDeleted?: (deletedIds: readonly string[]) => void | Promise<void>;
 };
 
 function useTransactionEditExtraState(transactionId: string | undefined) {
@@ -117,10 +119,13 @@ export function TransactionEditPanel({
   savePending = false,
   showHeader = true,
   onTriageSave,
+  onDeleted,
 }: TransactionEditPanelProps) {
   const { t, i18n } = useTranslation();
   const queryClient = useQueryClient();
   const isDetailMode = mode === 'detail';
+  const editable = transaction.deleted_at === null;
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const {
     applyToSelectedTransactions,
     setApplyToSelectedTransactions,
@@ -263,7 +268,32 @@ export function TransactionEditPanel({
     },
   });
 
-  const busy = savePending || saveMutation.isPending || assistMutation.isPending;
+  const deleteMutation = useMutation({
+    mutationFn: (deleteReason: string) =>
+      apiJson<{ requestedIds: readonly string[] }>(`/api/transactions/${transaction.id}/delete`, {
+        method: 'POST',
+        body: JSON.stringify({
+          additionalTransactionIds: applyToSelectedTransactions
+            ? [...otherSelectedTransactionIds]
+            : undefined,
+          deleteReason,
+        }),
+      }),
+    onSuccess: async (result) => {
+      toast.success(t('softDelete.deleted', { count: result.requestedIds.length }));
+      setDeleteDialogOpen(false);
+      await queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      await queryClient.invalidateQueries({ queryKey: ['transaction-detail', transaction.id] });
+      await onSaved();
+      await onDeleted?.(result.requestedIds);
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error'), { description: error.message, duration: Infinity });
+    },
+  });
+
+  const busy =
+    savePending || saveMutation.isPending || assistMutation.isPending || deleteMutation.isPending;
 
   const handleTriageSave = (): void => {
     onTriageSave?.({
@@ -309,6 +339,7 @@ export function TransactionEditPanel({
 
       <TransactionEditFooter
         mode={mode}
+        editable={editable}
         busy={busy}
         totalInstallments={transaction.total_installments ?? 0}
         applyToInstallmentSiblings={applyToInstallmentSiblings}
@@ -323,7 +354,21 @@ export function TransactionEditPanel({
         onAssist={() => assistMutation.mutate(false)}
         onRecreateAssist={() => assistMutation.mutate(true)}
         onSave={isDetailMode ? () => saveMutation.mutate() : handleTriageSave}
+        onDelete={
+          isDetailMode && !transaction.deleted_at ? () => setDeleteDialogOpen(true) : undefined
+        }
       />
+      {isDetailMode && deleteDialogOpen ? (
+        <SoftDeleteDialog
+          open
+          description={t('softDelete.description', {
+            count: 1 + (applyToSelectedTransactions ? otherSelectedTransactionIds.length : 0),
+          })}
+          pending={deleteMutation.isPending}
+          onClose={() => setDeleteDialogOpen(false)}
+          onConfirm={(reason) => deleteMutation.mutate(reason)}
+        />
+      ) : null}
     </article>
   );
 }

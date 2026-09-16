@@ -25,6 +25,7 @@ export function buildTransactionFilterQuery(
     q: query('q'),
     billId: query('bill-id'),
     displayDate: query('display-date'),
+    deleted: query('deleted'),
   };
 }
 

@@ -195,7 +195,7 @@ export function loadTransactionEntry(db: DatabaseSync, entryId: string): Annotat
        JOIN accounts a ON a.id = t.account_id
        LEFT JOIN categories cat ON cat.id = t.category_id
        LEFT JOIN categories parent_cat ON parent_cat.id = cat.parent_id
-       WHERE t.id = ?`,
+       WHERE t.id = ? AND t.deleted_at IS NULL`,
     )
     .get(entryId) as Record<string, unknown> | undefined;
 

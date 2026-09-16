@@ -89,6 +89,8 @@ actionable.
 Auto precompute after web/CLI sync, unless opted out, prepares suggestions for
 unannotated transactions that do not already have a pending suggestion.
 
+Deleted transactions are excluded from the triage queue and precompute work.
+
 Before precompute, sync detects internal-transfer proposals among the newly synced
 transactions and transactions from the preceding day. A proposal appears
 in the triage editor before classification.

@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { VISIBLE_ACCOUNT_TRANSACTIONS_WHERE } from '../db/account-links.js';
+import {
+  TransactionNotActiveError,
+  withActiveTransactionWrite,
+} from '../db/active-transaction-write.js';
 import { resolveAccountDisplayName } from '../db/connection-labels.js';
 import { TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL } from '../db/transaction-foreign-amount.js';
 import { mapInParallel } from '../utils/map-in-parallel.js';
@@ -158,15 +162,6 @@ export async function detectTransferGroups(
   }
 
   if (options.singlePair) {
-    const state: LinkState = {
-      groupsCreated: 0,
-      membersLinked: 0,
-      proposed: 0,
-      skipped: 0,
-      linked: new Set<string>(),
-    };
-    const left = options.singlePair.source;
-    const right = options.singlePair.destination;
     if (options.dryRun) {
       options.onProposal?.(options.singlePair);
       return {
@@ -179,16 +174,14 @@ export async function detectTransferGroups(
     }
     const confirmed = options.confirmPair ? await options.confirmPair(options.singlePair) : true;
     if (confirmed) {
-      persistTransferPair(db, left, right, options.singlePair, false, state);
-    } else {
-      state.skipped += 1;
+      return confirmTransferPairs(db, [options.singlePair]);
     }
     return {
-      groupsCreated: state.groupsCreated,
-      membersLinked: state.membersLinked,
+      groupsCreated: 0,
+      membersLinked: 0,
       candidatesScanned: 0,
       proposed: 1,
-      skipped: state.skipped,
+      skipped: 1,
     };
   }
 
@@ -291,7 +284,9 @@ async function findAndLinkMatchingPair(
     return findAndLinkMatchingPair(db, bucket, rightIndex + 1, left, options, windowMs, state);
   }
 
-  persistTransferPair(db, left, right, proposal, options.dryRun, state);
+  if (!persistTransferPair(db, left, right, proposal, options.dryRun, state)) {
+    return findAndLinkMatchingPair(db, bucket, rightIndex + 1, left, options, windowMs, state);
+  }
   return true;
 }
 
@@ -353,15 +348,37 @@ function persistTransferPair(
   proposal: TransferPairProposal,
   dryRun: boolean,
   state: LinkState,
-): void {
+): boolean {
   if (dryRun) {
     state.groupsCreated += 1;
     state.membersLinked += 2;
     state.linked.add(left.id);
     state.linked.add(right.id);
-    return;
+    return true;
   }
 
+  try {
+    withActiveTransactionWrite(db, [left.id, right.id], () => {
+      persistTransferPairUnchecked(db, left, right, proposal, state);
+      return undefined;
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof TransactionNotActiveError) {
+      state.skipped += 1;
+      return false;
+    }
+    throw error;
+  }
+}
+
+function persistTransferPairUnchecked(
+  db: DatabaseSync,
+  left: TransactionCandidate,
+  right: TransactionCandidate,
+  proposal: TransferPairProposal,
+  state: LinkState,
+): void {
   const groupId = randomUUID();
   const now = new Date().toISOString();
 
@@ -376,6 +393,44 @@ function persistTransferPair(
   state.membersLinked += 2;
   state.linked.add(left.id);
   state.linked.add(right.id);
+}
+
+export function confirmTransferPairs(
+  db: DatabaseSync,
+  pairs: readonly TransferPairProposal[],
+): DetectTransfersSummary {
+  const state: LinkState = {
+    groupsCreated: 0,
+    membersLinked: 0,
+    proposed: pairs.length,
+    skipped: 0,
+    linked: new Set<string>(),
+  };
+  const transactionIds = pairs.flatMap((pair) => [pair.source.id, pair.destination.id]);
+  withActiveTransactionWrite(db, transactionIds, () => {
+    for (const pair of pairs) {
+      const source = loadTransactionCandidateById(db, pair.source.id);
+      const destination = loadTransactionCandidateById(db, pair.destination.id);
+      if (!source || !destination) {
+        throw new TransactionNotActiveError([pair.source.id, pair.destination.id]);
+      }
+      persistTransferPairUnchecked(
+        db,
+        source,
+        destination,
+        { ...pair, source, destination },
+        state,
+      );
+    }
+    return undefined;
+  });
+  return {
+    groupsCreated: state.groupsCreated,
+    membersLinked: state.membersLinked,
+    candidatesScanned: 0,
+    proposed: state.proposed,
+    skipped: state.skipped,
+  };
 }
 
 function loadUnlinkedTransactions(
@@ -416,7 +471,8 @@ function loadUnlinkedTransactions(
          SELECT 1 FROM transfer_group_members tgm
          WHERE tgm.entry_type = 'transaction' AND tgm.entry_id = t.id
        )
-       AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}${extraWhere}
+       AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+       AND t.deleted_at IS NULL${extraWhere}
        ORDER BY t.occurred_at ASC`,
     )
     .all(...(params as never[]))
@@ -469,7 +525,7 @@ function linkManualPair(
     membersLinked: state.membersLinked,
     candidatesScanned: 2,
     proposed: 1,
-    skipped: 0,
+    skipped: state.skipped,
   };
 }
 
@@ -481,7 +537,7 @@ function loadTransactionCandidateById(db: DatabaseSync, id: string): Transaction
               a.type AS account_type
        FROM transactions t
        JOIN accounts a ON a.id = t.account_id
-       WHERE t.id = ?`,
+       WHERE t.id = ? AND t.deleted_at IS NULL`,
     )
     .get(id) as Record<string, unknown> | undefined;
 

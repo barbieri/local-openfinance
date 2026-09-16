@@ -62,6 +62,7 @@ export function clearUnannotatedAssistSuggestions(db: DatabaseSync): number {
              ON ea.entry_type = 'transaction' AND ea.entry_id = t.id
            WHERE ea.id IS NULL
              AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+             AND t.deleted_at IS NULL
          )`,
     )
     .run();

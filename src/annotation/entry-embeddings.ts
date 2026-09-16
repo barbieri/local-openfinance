@@ -92,6 +92,7 @@ export async function backfillAssistableAnnotationEmbeddings(
        LEFT JOIN transaction_category_overrides tco ON tco.transaction_id = t.id
        LEFT JOIN annotation_embeddings ae ON ae.annotation_id = ea.id
        WHERE ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+         AND t.deleted_at IS NULL
          AND ${ASSISTABLE_CLASSIFICATION_WHERE}
          AND (ae.annotation_id IS NULL OR ae.model NOT LIKE ?)
        ORDER BY t.occurred_at DESC`,

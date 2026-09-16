@@ -64,6 +64,9 @@ describe('account links', () => {
     seedTransaction(db, 'tx-canonical', 'canonical');
     seedTransaction(db, 'tx-alias-a', 'alias-a');
     seedTransaction(db, 'tx-alias-b', 'alias-b');
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-canonical'",
+    ).run();
 
     linkAccounts(db, 'canonical', ['alias-a', 'alias-b']);
 
@@ -79,7 +82,7 @@ describe('account links', () => {
     ).toBe(1);
     expect(
       runListQuery(db, { entity: transactionsEntity, filters: [], limit: 10, offset: 0 }).total,
-    ).toBe(1);
+    ).toBe(0);
     expect(
       runListQuery(db, {
         entity: creditCardBillsEntity,

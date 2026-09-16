@@ -1,4 +1,5 @@
 import type { DatabaseSync } from 'node:sqlite';
+import { withActiveTransactionWrite } from '../db/active-transaction-write.js';
 import { resolveStoredCategorySelectId } from '../db/category-select-id.js';
 import { listInstallmentSiblingTransactionIds } from '../db/installment-siblings.js';
 import {
@@ -7,7 +8,11 @@ import {
   upsertTransactionCategoryOverride,
 } from '../db/transaction-category-overrides.js';
 import type { ResolvedAppConfig } from '../types.js';
-import { saveEntryAnnotation } from './store.js';
+import {
+  embedWrittenEntryAnnotation,
+  type WrittenEntryAnnotation,
+  writeEntryAnnotationUnchecked,
+} from './store.js';
 
 export type SaveTransactionClassificationInput = {
   readonly categoryOverrideId?: string | null | undefined;
@@ -115,10 +120,6 @@ export async function saveTransactionClassification(
   const primaryHasAnnotation = hasTransactionAnnotation(db, transactionId);
   const applyToRelatedTargets = input.applyToInstallmentSiblings === true || selectedIds.length > 0;
 
-  for (const targetId of targetIds) {
-    applyCategoryOverrideToTransaction(db, targetId, categoryOverrideSelectId || null);
-  }
-
   const annotationTargets = targetIds.filter((targetId) =>
     shouldSaveAnnotationForTarget({
       targetId,
@@ -129,20 +130,29 @@ export async function saveTransactionClassification(
     }),
   );
 
-  await Promise.all(
-    annotationTargets.map((targetId) =>
-      saveEntryAnnotation(db, {
-        entryType: 'transaction',
-        entryId: targetId,
-        categoryId: annotationCategoryId,
-        subCategoryId: subCategoryId ?? undefined,
-        labelIds,
-        notes: notes ?? undefined,
-        source: input.source ?? 'manual',
-        embedding: config.annotation.embedding,
-      }),
-    ),
-  );
+  const writtenAnnotations: WrittenEntryAnnotation[] = [];
+  withActiveTransactionWrite(db, targetIds, () => {
+    for (const targetId of targetIds) {
+      applyCategoryOverrideToTransaction(db, targetId, categoryOverrideSelectId || null);
+    }
+    for (const targetId of annotationTargets) {
+      writtenAnnotations.push(
+        writeEntryAnnotationUnchecked(db, {
+          entryType: 'transaction',
+          entryId: targetId,
+          categoryId: annotationCategoryId,
+          subCategoryId: subCategoryId ?? undefined,
+          labelIds,
+          notes: notes ?? undefined,
+          source: input.source ?? 'manual',
+          embedding: config.annotation.embedding,
+        }),
+      );
+    }
+    return undefined;
+  });
+
+  await Promise.all(writtenAnnotations.map((written) => embedWrittenEntryAnnotation(db, written)));
 
   return { updatedTransactionIds: targetIds };
 }

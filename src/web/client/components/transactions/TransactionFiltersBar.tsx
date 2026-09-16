@@ -272,6 +272,18 @@ export function TransactionFiltersPanel({
       <SidebarSection title={t('filters.sectionAdvanced')}>
         <div className="space-y-2">
           <label className={fieldClass}>
+            <span className="font-medium text-muted-foreground">{t('filters.deleted')}</span>
+            <select
+              className="rounded border border-input bg-background px-2 py-1 text-sm"
+              value={String(filters['deleted'] ?? '')}
+              onChange={(e) => onChange('deleted', e.target.value)}
+            >
+              <option value="">{t('filters.deletedHide')}</option>
+              <option value="all">{t('filters.deletedAll')}</option>
+              <option value="only">{t('filters.deletedOnly')}</option>
+            </select>
+          </label>
+          <label className={fieldClass}>
             <span className="font-medium text-muted-foreground">{t('filters.transfers')}</span>
             <select
               className="rounded border border-input bg-background px-2 py-1 text-sm"

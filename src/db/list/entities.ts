@@ -60,7 +60,7 @@ export const transactionsEntity: ListEntityDefinition = {
     synced_at: { type: 'date' },
   },
   defaultOrderBy: 'occurred_at DESC, id ASC',
-  staticWhere: VISIBLE_ACCOUNT_TRANSACTIONS_WHERE,
+  staticWhere: `${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE} AND deleted_at IS NULL`,
 };
 
 export const creditCardBillsEntity: ListEntityDefinition = {

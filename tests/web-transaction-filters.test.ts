@@ -130,5 +130,24 @@ describe('transaction filters', () => {
       'end-date': undefined,
     });
     expect(clearTransactionFilterPart('label-id')).toEqual({ 'label-id': undefined });
+    expect(clearTransactionFilterPart('deleted')).toEqual({ deleted: undefined });
+  });
+
+  it('serializes and summarizes explicit deleted visibility filters', () => {
+    expect(buildTransactionListQuery({ f: { deleted: 'all' } })).toContain('deleted=all');
+    expect(buildTransactionListQuery({ f: { deleted: 'only' } })).toContain('deleted=only');
+    expect(
+      buildTransactionFilterSummary(
+        { d: TRANSACTION_DATE_ALL, deleted: 'only' },
+        {
+          accounts: [],
+          bills: [],
+          categoryById: {},
+          labelById: {},
+          locale: 'en-US',
+          t: ((key: string) => key) as never,
+        },
+      ),
+    ).toEqual([{ id: 'deleted', label: 'filters.deleted', value: 'filters.deletedOnly' }]);
   });
 });

@@ -471,6 +471,7 @@ function listPeerAssistCandidates(
            OR t.merchant_document_key IN (${placeholders})
          )
          AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+         AND t.deleted_at IS NULL
          AND ${ASSISTABLE_CLASSIFICATION_WHERE}
        ORDER BY
          CASE WHEN t.account_id = ? THEN 0 ELSE 1 END,
@@ -507,6 +508,7 @@ function listAssistCandidates(db: DatabaseSync, entry: AnnotatableEntry): Assist
        WHERE t.id != ?
          AND t.account_id = ?
          AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+         AND t.deleted_at IS NULL
          AND ${ASSISTABLE_CLASSIFICATION_WHERE}
        ORDER BY t.occurred_at DESC
        LIMIT ?`,
@@ -556,6 +558,7 @@ function listMerchantAssistCandidates(
          AND t.occurred_at BETWEEN ? AND ?
          AND ${merchantPredicate}
          AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+         AND t.deleted_at IS NULL
          AND ${ASSISTABLE_CLASSIFICATION_WHERE}`,
     )
     .all(

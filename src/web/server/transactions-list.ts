@@ -8,6 +8,7 @@ import {
 import {
   parseTransactionBillIdFilter,
   parseTransactionClassificationFilter,
+  parseTransactionDeletedVisibility,
   parseTransactionInstallmentsFilter,
   parseTransactionLabelFilter,
   parseTransactionTransfersFilter,
@@ -68,6 +69,7 @@ export function parseTransactionWebFilters(query: {
   readonly q?: string | undefined;
   readonly billId?: string | undefined;
   readonly displayDate?: string | undefined;
+  readonly deleted?: string | undefined;
 }): TransactionWebListFilters {
   return {
     status: parseTransactionStatusFilter(query.status),
@@ -88,6 +90,7 @@ export function parseTransactionWebFilters(query: {
     billId: parseTransactionBillIdFilter(query.billId),
     useCreditPurchaseDate: parseTransactionUseCreditPurchaseDate(query.displayDate),
     minAbsoluteAmountCents: null,
+    deletedVisibility: parseTransactionDeletedVisibility(query.deleted),
     ...resolveTransactionDateRange({
       date: query.date,
       startDate: query.startDate,

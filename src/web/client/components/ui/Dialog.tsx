@@ -9,6 +9,7 @@ type DialogProps = {
   readonly children: ReactNode;
   readonly footer?: ReactNode;
   readonly size?: 'md' | 'lg' | 'xl' | 'wide';
+  readonly preventClose?: boolean;
 };
 
 const sizeClass = {
@@ -18,7 +19,15 @@ const sizeClass = {
   wide: 'max-sm:fixed max-sm:inset-0 max-sm:m-0 max-sm:h-full max-sm:w-full max-sm:max-w-none max-sm:rounded-none sm:w-[75vw] sm:min-w-[650px] sm:max-w-[75vw]',
 } as const;
 
-export function Dialog({ open, title, onClose, children, footer, size = 'md' }: DialogProps) {
+export function Dialog({
+  open,
+  title,
+  onClose,
+  children,
+  footer,
+  size = 'md',
+  preventClose = false,
+}: DialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const onCloseEvent = useEffectEvent(onClose);
 
@@ -35,16 +44,23 @@ export function Dialog({ open, title, onClose, children, footer, size = 'md' }: 
     const handleClose = (): void => {
       onCloseEvent();
     };
+    const handleCancel = (event: Event): void => {
+      if (preventClose) {
+        event.preventDefault();
+      }
+    };
     dialog.addEventListener('close', handleClose);
+    dialog.addEventListener('cancel', handleCancel);
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
 
     return () => {
       dialog.removeEventListener('close', handleClose);
+      dialog.removeEventListener('cancel', handleCancel);
       document.body.style.overflow = previousOverflow;
     };
-  }, []);
+  }, [preventClose]);
 
   if (!open) {
     return null;

@@ -8,6 +8,11 @@ import {
 } from './category-display.js';
 import { loadCreditCardBillLinksForTransactions } from './credit-card-bill-links.js';
 import {
+  appendDeletedVisibilityPredicate,
+  DELETED_VISIBILITIES,
+  type DeletedVisibility,
+} from './entry-deletion.js';
+import {
   type EnrichedTransaction,
   enrichTransactionRow,
   loadTransactionRowById,
@@ -53,6 +58,7 @@ export type TransactionWebListFilters = TransactionListFilters &
     readonly billId: string | null;
     readonly useCreditPurchaseDate: boolean;
     readonly minAbsoluteAmountCents: number | null;
+    readonly deletedVisibility: DeletedVisibility;
   };
 
 export function createTransactionWebListFilters(
@@ -77,6 +83,7 @@ export function createTransactionWebListFilters(
     billId: null,
     useCreditPurchaseDate: false,
     minAbsoluteAmountCents: null,
+    deletedVisibility: 'hide',
     ...overrides,
   };
 }
@@ -220,12 +227,16 @@ function queryTransactionPage(
 }
 
 export function buildTransactionBalanceScopeWhere(
-  filters: Pick<TransactionWebListFilters, 'accountIds'>,
+  filters: Pick<TransactionWebListFilters, 'accountIds' | 'deletedVisibility'>,
   accountIdColumn = 't.account_id',
+  includeDeletedVisibility = true,
 ): { readonly sql: string; readonly params: SQLInputValue[] } {
   const parts: string[] = [];
   const params: SQLInputValue[] = [];
   appendAccountFilter(parts, params, filters.accountIds, accountIdColumn);
+  if (includeDeletedVisibility) {
+    appendDeletedVisibilityPredicate(parts, 't.deleted_at', filters.deletedVisibility);
+  }
   return {
     sql: parts.length > 0 ? `AND ${parts.join(' AND ')}` : '',
     params,
@@ -497,4 +508,10 @@ export function parseTransactionInstallmentsFilter(
     return value;
   }
   return 'all';
+}
+
+export function parseTransactionDeletedVisibility(value: string | undefined): DeletedVisibility {
+  return DELETED_VISIBILITIES.includes(value as DeletedVisibility)
+    ? (value as DeletedVisibility)
+    : 'hide';
 }

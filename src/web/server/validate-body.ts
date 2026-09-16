@@ -25,6 +25,9 @@ const validators = {
   setTransactionBillLink: ajv.compile({
     $ref: 'https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json#/$defs/setTransactionBillLink',
   }),
+  softDeleteTransaction: ajv.compile({
+    $ref: 'https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json#/$defs/softDeleteTransaction',
+  }),
   saveIntelligenceMemory: ajv.compile({
     $ref: 'https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json#/$defs/saveIntelligenceMemory',
   }),

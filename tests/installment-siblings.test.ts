@@ -139,6 +139,39 @@ describe('installment siblings', () => {
     expect(findFirstInstallmentTransactionId(db, 'tx-1')).toBe('tx-1');
   });
 
+  it('does not infer deleted installments as siblings or a first installment', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedInstallmentTransaction(db, {
+      id: 'tx-1',
+      accountId: 'acc-1',
+      merchantName: 'Store Purchase 01/03',
+      installmentNumber: 1,
+      totalInstallments: 3,
+    });
+    seedInstallmentTransaction(db, {
+      id: 'tx-2',
+      accountId: 'acc-1',
+      merchantName: 'Store Purchase 02/03',
+      installmentNumber: 2,
+      totalInstallments: 3,
+    });
+    seedInstallmentTransaction(db, {
+      id: 'tx-3',
+      accountId: 'acc-1',
+      merchantName: 'Store Purchase 03/03',
+      installmentNumber: 3,
+      totalInstallments: 3,
+    });
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-1'",
+    ).run();
+
+    expect(listInstallmentSiblingTransactionIds(db, 'tx-2')).toEqual(['tx-3']);
+    expect(findFirstInstallmentTransactionId(db, 'tx-2')).toBeNull();
+    expect(getInstallmentPlanInfo(db, 'tx-1')?.siblingIds).toEqual(['tx-2', 'tx-3']);
+  });
+
   it('matches installment plans using merchant text resolved from raw_json', () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);

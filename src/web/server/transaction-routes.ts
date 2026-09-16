@@ -3,6 +3,10 @@ import { HTTPException } from 'hono/http-exception';
 import { saveTransactionClassification } from '../../annotation/save-transaction-classification.js';
 import { listMccCodes, mccCodesDocumentVersion } from '../../data/mcc-codes.js';
 import {
+  TransactionNotActiveError,
+  withActiveTransactionWrite,
+} from '../../db/active-transaction-write.js';
+import {
   canChangeCreditCardBillLink,
   setManualCreditCardBillLink,
 } from '../../db/credit-card-bill-links.js';
@@ -10,6 +14,7 @@ import {
   getEnrichedTransaction,
   listEnrichedTransactionPage,
 } from '../../db/enriched-transactions.js';
+import { SoftDeleteTargetNotFoundError, softDeleteTransactions } from '../../db/entry-deletion.js';
 import {
   findFirstInstallmentTransactionId,
   getInstallmentPlanInfo,
@@ -136,6 +141,27 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
     return c.json({ transaction });
   });
 
+  app.post('/api/transactions/:transactionId/delete', async (c) => {
+    const transactionId = c.req.param('transactionId');
+    const body = await parseValidatedJsonBody<{
+      additionalTransactionIds?: string[];
+      deleteReason?: string | null;
+    }>(c, 'softDeleteTransaction');
+    try {
+      const result = softDeleteTransactions(ctx.db, {
+        transactionId,
+        additionalTransactionIds: body.additionalTransactionIds,
+        deleteReason: body.deleteReason,
+      });
+      return c.json(result);
+    } catch (error) {
+      if (error instanceof SoftDeleteTargetNotFoundError) {
+        return c.json({ error: 'Transaction not found', missingIds: error.missingIds }, 404);
+      }
+      throw error;
+    }
+  });
+
   app.post('/api/transactions/:transactionId/bill-link', async (c) => {
     const transactionId = c.req.param('transactionId');
     const body = await parseValidatedJsonBody<{ billId: string }>(c, 'setTransactionBillLink');
@@ -149,6 +175,9 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
     try {
       setManualCreditCardBillLink(ctx.db, transactionId, body.billId, new Date().toISOString());
     } catch (error) {
+      if (error instanceof TransactionNotActiveError) {
+        throw error;
+      }
       const message = error instanceof Error ? error.message : 'Failed to set bill link';
       return c.json({ error: message }, 400);
     }
@@ -184,13 +213,19 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
   app.put('/api/transactions/:transactionId/category-override', async (c) => {
     const transactionId = c.req.param('transactionId');
     const body = await parseValidatedJsonBody<{ categoryId: string }>(c, 'categoryOverride');
-    upsertTransactionCategoryOverride(ctx.db, transactionId, body.categoryId);
+    withActiveTransactionWrite(ctx.db, [transactionId], () => {
+      upsertTransactionCategoryOverride(ctx.db, transactionId, body.categoryId);
+      return undefined;
+    });
     return c.json({ saved: true });
   });
 
   app.delete('/api/transactions/:transactionId/category-override', (c) => {
     const transactionId = c.req.param('transactionId');
-    clearTransactionCategoryOverride(ctx.db, transactionId);
+    withActiveTransactionWrite(ctx.db, [transactionId], () => {
+      clearTransactionCategoryOverride(ctx.db, transactionId);
+      return undefined;
+    });
     return c.json({ cleared: true });
   });
 }

@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { listFilteredTransactionIds } from '../../db/transaction-query.js';
 import {
   type ApiTransferPairProposal,
+  confirmTransferPairs,
   DEFAULT_TRANSFER_FEE_TOLERANCE_CENTS,
   DEFAULT_TRANSFER_WINDOW_HOURS,
   detectTransferGroups,
@@ -29,7 +30,9 @@ export function registerTransferRoutes(app: Hono, ctx: WebServerContext): void {
          FROM transfer_link_suggestions s
          JOIN transactions source ON source.id = s.source_entry_id
          JOIN transactions destination ON destination.id = s.destination_entry_id
-         WHERE source_entry_id = ? OR destination_entry_id = ?
+         WHERE (source_entry_id = ? OR destination_entry_id = ?)
+           AND source.deleted_at IS NULL
+           AND destination.deleted_at IS NULL
          ORDER BY created_at DESC LIMIT 1`,
       )
       .get(transactionId, transactionId) as
@@ -89,18 +92,8 @@ export function registerTransferRoutes(app: Hono, ctx: WebServerContext): void {
       'transferConfirm',
       normalizeTransferConfirmBody(rawBody),
     );
-    await Promise.all(
-      body.pairs.map((pair) =>
-        detectTransferGroups(ctx.db, {
-          windowHours: DEFAULT_TRANSFER_WINDOW_HOURS,
-          feeToleranceCents: DEFAULT_TRANSFER_FEE_TOLERANCE_CENTS,
-          dryRun: false,
-          confirmPair: async () => true,
-          singlePair: pair,
-        }),
-      ),
-    );
-    return c.json({ linked: body.pairs.length });
+    const summary = confirmTransferPairs(ctx.db, body.pairs);
+    return c.json({ linked: summary.groupsCreated });
   });
 
   app.post('/api/transfers/link', async (c) => {

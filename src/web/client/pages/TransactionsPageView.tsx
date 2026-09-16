@@ -75,6 +75,7 @@ export function TransactionsPageView({
   detailEditIds,
   closeDetail,
   handleDetailSaved,
+  handleDetailDeleted,
   openTransactionById,
   currentClassify,
   clearClassify,
@@ -261,6 +262,7 @@ export function TransactionsPageView({
         detailEditIds={detailEditIds}
         onCloseDetail={closeDetail}
         onDetailSaved={handleDetailSaved}
+        onDetailDeleted={handleDetailDeleted}
         onOpenTransaction={openTransactionById}
         currentClassify={currentClassify}
         onCloseClassify={clearClassify}

@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { VISIBLE_ACCOUNT_TRANSACTIONS_WHERE } from '../db/account-links.js';
+import {
+  TransactionNotActiveError,
+  withActiveTransactionWrite,
+} from '../db/active-transaction-write.js';
 import { resolveStoredCategorySelectId } from '../db/category-select-id.js';
 import { getSql, runSql } from '../db/sqlite-query.js';
 import { estimateEmbeddingCostMicrousd } from '../intelligence/usage.js';
@@ -43,6 +47,16 @@ export type SaveAnnotationInput = {
   readonly notes?: string | undefined;
   readonly source: 'manual' | 'suggested' | 'imported';
   readonly embedding?: ScoringModelConfig | undefined;
+};
+
+export type WrittenEntryAnnotation = {
+  readonly annotationId: string;
+  readonly entryType: SaveAnnotationInput['entryType'];
+  readonly entryId: string;
+  readonly embedding: {
+    readonly config: ScoringModelConfig;
+    readonly featureText: string;
+  } | null;
 };
 
 export type SimilarAnnotation = {
@@ -273,6 +287,7 @@ export function listUnannotatedEntries(
            ON ea.entry_type = 'transaction' AND ea.entry_id = t.id
          WHERE ea.id IS NULL
            AND ${VISIBLE_ACCOUNT_TRANSACTIONS_WHERE}
+           AND t.deleted_at IS NULL
          ORDER BY t.occurred_at DESC
          LIMIT ?`,
       )
@@ -316,6 +331,27 @@ export async function saveEntryAnnotation(
   db: DatabaseSync,
   input: SaveAnnotationInput,
 ): Promise<string> {
+  let written: WrittenEntryAnnotation | undefined;
+  const write = () => {
+    written = writeEntryAnnotationUnchecked(db, input);
+    return undefined;
+  };
+  if (input.entryType === 'transaction') {
+    withActiveTransactionWrite(db, [input.entryId], write);
+  } else {
+    write();
+  }
+  if (!written) {
+    throw new Error(`Annotation row missing after save for ${input.entryId}`);
+  }
+  await embedWrittenEntryAnnotation(db, written);
+  return written.annotationId;
+}
+
+export function writeEntryAnnotationUnchecked(
+  db: DatabaseSync,
+  input: SaveAnnotationInput,
+): WrittenEntryAnnotation {
   const now = new Date().toISOString();
   const annotationId = randomUUID();
   const categoryId = resolveStoredCategorySelectId(input.categoryId ?? null);
@@ -364,38 +400,65 @@ export async function saveEntryAnnotation(
     );
   }
 
-  if (input.embedding) {
-    const entry = loadAnnotatableEntry(db, input.entryType, input.entryId);
-    if (entry) {
-      const featureText = buildAnnotationFeatureText(entry);
-      const embedded = await embedScoringText(input.embedding, featureText);
-      runSql(
-        db,
-        `INSERT INTO annotation_embeddings (
-           annotation_id, model, dimensions, vector, created_at,
-           input_tokens, pricing_snapshot_json, estimated_cost_microusd
-         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-         ON CONFLICT(annotation_id) DO UPDATE SET
-           model = excluded.model,
-           dimensions = excluded.dimensions,
-           vector = excluded.vector,
-           created_at = excluded.created_at,
-           input_tokens = excluded.input_tokens,
-           pricing_snapshot_json = excluded.pricing_snapshot_json,
-           estimated_cost_microusd = excluded.estimated_cost_microusd`,
-        annotationRow.id,
-        embedded.model,
-        embedded.dimensions,
-        vectorToBlob(embedded.vector),
-        now,
-        embedded.inputTokens ?? null,
-        input.embedding.pricing ? JSON.stringify(input.embedding.pricing) : null,
-        estimateEmbeddingCostMicrousd(embedded.inputTokens ?? null, input.embedding.pricing),
-      );
-    }
+  const entry = input.embedding ? loadAnnotatableEntry(db, input.entryType, input.entryId) : null;
+  return {
+    annotationId: annotationRow.id,
+    entryType: input.entryType,
+    entryId: input.entryId,
+    embedding:
+      input.embedding && entry
+        ? { config: input.embedding, featureText: buildAnnotationFeatureText(entry) }
+        : null,
+  };
+}
+
+export async function embedWrittenEntryAnnotation(
+  db: DatabaseSync,
+  written: WrittenEntryAnnotation,
+): Promise<void> {
+  if (!written.embedding) {
+    return;
   }
 
-  return annotationRow.id;
+  const { config, featureText } = written.embedding;
+  const embedded = await embedScoringText(config, featureText);
+  const write = () => {
+    runSql(
+      db,
+      `INSERT INTO annotation_embeddings (
+         annotation_id, model, dimensions, vector, created_at,
+         input_tokens, pricing_snapshot_json, estimated_cost_microusd
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(annotation_id) DO UPDATE SET
+         model = excluded.model,
+         dimensions = excluded.dimensions,
+         vector = excluded.vector,
+         created_at = excluded.created_at,
+         input_tokens = excluded.input_tokens,
+         pricing_snapshot_json = excluded.pricing_snapshot_json,
+         estimated_cost_microusd = excluded.estimated_cost_microusd`,
+      written.annotationId,
+      embedded.model,
+      embedded.dimensions,
+      vectorToBlob(embedded.vector),
+      new Date().toISOString(),
+      embedded.inputTokens ?? null,
+      config.pricing ? JSON.stringify(config.pricing) : null,
+      estimateEmbeddingCostMicrousd(embedded.inputTokens ?? null, config.pricing),
+    );
+    return undefined;
+  };
+  if (written.entryType !== 'transaction') {
+    write();
+    return;
+  }
+  try {
+    withActiveTransactionWrite(db, [written.entryId], write);
+  } catch (error) {
+    if (!(error instanceof TransactionNotActiveError)) {
+      throw error;
+    }
+  }
 }
 
 export async function ensureAnnotationEmbedding(

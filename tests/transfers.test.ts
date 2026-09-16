@@ -2,7 +2,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
 import { migrateDatabase } from '../src/db/migrate.js';
 import { lookupTransferGroup } from '../src/state/entry-attributes.js';
-import { detectTransferGroups } from '../src/transfers/detect.js';
+import {
+  confirmTransferPairs,
+  detectTransferGroups,
+  type TransferPairProposal,
+} from '../src/transfers/detect.js';
 
 function seedTransferPair(db: DatabaseSync): { readonly outId: string; readonly inId: string } {
   db.prepare(
@@ -32,6 +36,37 @@ function seedTransferPair(db: DatabaseSync): { readonly outId: string; readonly 
   ).run(inId);
 
   return { outId, inId };
+}
+
+function transferProposal(
+  sourceId: string,
+  destinationId: string,
+  amountCents: number,
+): TransferPairProposal {
+  return {
+    source: {
+      id: sourceId,
+      accountId: 'acct-checking',
+      accountType: 'BANK',
+      occurredAt: '2026-06-10T10:00:00.000Z',
+      amountCents: -amountCents,
+      merchantName: null,
+      description: 'Transfer out',
+    },
+    destination: {
+      id: destinationId,
+      accountId: 'acct-savings',
+      accountType: 'BANK',
+      occurredAt: '2026-06-10T10:30:00.000Z',
+      amountCents,
+      merchantName: null,
+      description: 'Transfer in',
+    },
+    kind: 'internal_transfer',
+    confidence: 1,
+    amountConfidence: 1,
+    timeConfidence: 1,
+  };
 }
 
 describe('transfer detection', () => {
@@ -101,6 +136,108 @@ describe('transfer detection', () => {
 
     expect(summary.groupsCreated).toBe(1);
     expect(lookupTransferGroup(db, 'transaction', outId)?.relatedEntryIds).not.toContain('tx-card');
+  });
+
+  it('skips a manual pair when either selected transaction is deleted', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    const { outId, inId } = seedTransferPair(db);
+    db.prepare("UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = ?").run(
+      inId,
+    );
+
+    const summary = await detectTransferGroups(db, {
+      windowHours: 1,
+      feeToleranceCents: 0,
+      dryRun: false,
+      manualPair: { sourceId: outId, destinationId: inId },
+    });
+
+    expect(summary).toMatchObject({ groupsCreated: 0, membersLinked: 0, skipped: 1 });
+  });
+
+  it('rejects a stale confirmed pair when either transaction was deleted', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    const { outId, inId } = seedTransferPair(db);
+    let stalePair: Parameters<typeof detectTransferGroups>[1]['singlePair'];
+    await detectTransferGroups(db, {
+      windowHours: 1,
+      feeToleranceCents: 0,
+      dryRun: true,
+      onProposal: (proposal) => {
+        stalePair = proposal;
+      },
+    });
+    db.prepare("UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = ?").run(
+      inId,
+    );
+
+    await expect(
+      detectTransferGroups(db, {
+        windowHours: 1,
+        feeToleranceCents: 0,
+        dryRun: false,
+        singlePair: stalePair,
+      }),
+    ).rejects.toThrow('Transaction not found');
+    expect(lookupTransferGroup(db, 'transaction', outId)).toBeUndefined();
+  });
+
+  it('rejects an entire confirmation batch before linking any pair', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    const { outId, inId } = seedTransferPair(db);
+    db.prepare(
+      `INSERT INTO transactions (
+        id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at
+      ) VALUES
+        ('tx-out-2', 'acct-checking', '2026-06-11T10:00:00.000Z', -50000, 'BRL', 'Transfer out 2', '{}', '2026-06-11T00:00:00.000Z'),
+        ('tx-in-2', 'acct-savings', '2026-06-11T10:30:00.000Z', 50000, 'BRL', 'Transfer in 2', '{}', '2026-06-11T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-in-2'",
+    ).run();
+
+    expect(() =>
+      confirmTransferPairs(db, [
+        transferProposal(outId, inId, 100_000),
+        transferProposal('tx-out-2', 'tx-in-2', 50_000),
+      ]),
+    ).toThrow('Transaction not found');
+    expect(db.prepare('SELECT * FROM transfer_groups').all()).toEqual([]);
+    expect(db.prepare('SELECT * FROM transfer_group_members').all()).toEqual([]);
+  });
+
+  it('does not enrich a live transfer with a deleted related leg', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    const { outId, inId } = seedTransferPair(db);
+    await detectTransferGroups(db, {
+      windowHours: 1,
+      feeToleranceCents: 0,
+      dryRun: false,
+    });
+    db.prepare("UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = ?").run(
+      inId,
+    );
+
+    const { listEnrichedTransactions } = await import('../src/db/transaction-details.js');
+    const live = listEnrichedTransactions(
+      db,
+      {
+        status: 'all',
+        accountIds: 'all',
+        categoryIds: 'all',
+        merchantPattern: null,
+        paymentTypes: 'all',
+        startDate: null,
+        endDate: null,
+      },
+      'UTC',
+    ).find((row) => row.id === outId);
+
+    expect(live?.transfer_group?.related).toBeNull();
   });
 
   it('skips pairs rejected by confirmPair and tries the next candidate', async () => {

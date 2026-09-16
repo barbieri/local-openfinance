@@ -92,4 +92,30 @@ describe('credit card bill links', () => {
     expect(link?.source).toBe('manual');
     expect(canChangeCreditCardBillLink(db, transactionId, rawJson)).toBe(false);
   });
+
+  it('does not replace a manual bill link after the transaction is deleted', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    const { accountId, billId, transactionId } = seedCreditCardFixture(db);
+    db.prepare(
+      `INSERT INTO credit_card_bills (
+        id, account_id, due_date, total_amount_cents, minimum_payment_cents, payment_status, currency, raw_json, synced_at
+      ) VALUES ('bill-2', ?, '2026-07-15', 20000, 500, 'OPEN', 'BRL', '{}', '2026-06-10T00:00:00.000Z')`,
+    ).run(accountId);
+    db.prepare(
+      `INSERT INTO transactions (
+        id, account_id, occurred_at, amount_cents, amount_in_account_currency_cents,
+        currency, description, raw_json, synced_at
+      ) VALUES (?, ?, '2026-05-20T10:00:00.000Z', -5000, -5000, 'BRL', 'Store', '{}', '2026-06-10T00:00:00.000Z')`,
+    ).run(transactionId, accountId);
+    setManualCreditCardBillLink(db, transactionId, billId, '2026-06-10T00:00:00.000Z');
+    db.prepare("UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = ?").run(
+      transactionId,
+    );
+
+    expect(() =>
+      setManualCreditCardBillLink(db, transactionId, 'bill-2', '2026-06-11T00:00:00.000Z'),
+    ).toThrow('Transaction not found');
+    expect(loadCreditCardBillLink(db, transactionId)?.bill_id).toBe(billId);
+  });
 });

@@ -42,6 +42,7 @@ import {
   mergeTransactionFilterPatch,
   patchTransactionChartState,
 } from './transactions-page-helpers.js';
+import { removeDeletedTransactionIds } from './transactions-page-selection.js';
 import { useTransactionsPageUiState } from './transactions-page-state.js';
 import { isUnclassifiedTransaction } from './transactions-page-utils.js';
 
@@ -120,6 +121,7 @@ export type TransactionsPageViewProps = {
   readonly detailEditIds: readonly string[];
   readonly closeDetail: () => void;
   readonly handleDetailSaved: () => Promise<void>;
+  readonly handleDetailDeleted: (deletedIds: readonly string[]) => void;
   readonly openTransactionById: (transactionId: string) => Promise<void>;
   readonly currentClassify: TransactionRow | undefined;
   readonly clearClassify: () => void;
@@ -609,6 +611,15 @@ export function useTransactionsPageController(): TransactionsPageViewProps {
     ui.detailEditIndex,
   ]);
 
+  const handleDetailDeleted = useCallback(
+    (deletedIds: readonly string[]): void => {
+      patchSelected((selectedIds) => removeDeletedTransactionIds(selectedIds, deletedIds));
+      selectionAnchorIndexRef.current = null;
+      closeDetail();
+    },
+    [closeDetail, patchSelected],
+  );
+
   const updateFilters = (patch: Record<string, string | undefined>): void => {
     setUrlState({ ...urlState, f: mergeTransactionFilterPatch(filters, patch), p: 1 });
   };
@@ -760,6 +771,7 @@ export function useTransactionsPageController(): TransactionsPageViewProps {
     detailEditIds: ui.detailEditIds,
     closeDetail,
     handleDetailSaved,
+    handleDetailDeleted,
     openTransactionById,
     currentClassify,
     clearClassify,

@@ -149,6 +149,35 @@ describe('listEnrichedTransactionsPage', () => {
     ).toEqual(['tx-june-1', 'tx-june-2']);
   });
 
+  it('hides deleted transactions by default and can include or isolate them', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    seedTransaction(db, {
+      id: 'tx-live',
+      occurredAt: '2026-06-01T12:00:00.000Z',
+      merchantName: 'Live',
+      description: 'Visible',
+      amountCents: -1000,
+    });
+    seedTransaction(db, {
+      id: 'tx-deleted',
+      occurredAt: '2026-06-02T12:00:00.000Z',
+      merchantName: 'Deleted',
+      description: 'Hidden',
+      amountCents: -2000,
+    });
+    db.prepare(
+      "UPDATE transactions SET deleted_at = '2026-09-15T12:00:00.000Z' WHERE id = 'tx-deleted'",
+    ).run();
+
+    const ids = (deletedVisibility: 'all' | 'hide' | 'only') =>
+      listFilteredTransactionIds(db, createTransactionWebListFilters({ deletedVisibility }));
+    expect(ids('hide')).toEqual(['tx-live']);
+    expect(ids('all')).toEqual(['tx-live', 'tx-deleted']);
+    expect(ids('only')).toEqual(['tx-deleted']);
+  });
+
   it('sorts oldest-first when date ascending is requested', () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);
