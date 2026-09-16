@@ -4,6 +4,7 @@ import { Dialog } from './Dialog.js';
 
 type SoftDeleteDialogCommonProps = {
   readonly open: boolean;
+  readonly title?: string | undefined;
   readonly description: string;
   readonly onClose: () => void;
   readonly pending?: boolean;
@@ -20,7 +21,7 @@ type SoftDeleteDialogProps =
     });
 
 export function SoftDeleteDialog(props: SoftDeleteDialogProps) {
-  const { open, description, onClose, pending = false } = props;
+  const { open, title, description, onClose, pending = false } = props;
   const { t } = useTranslation();
   const [reason, setReason] = useState('');
   const restoring = props.mode === 'restore';
@@ -29,7 +30,7 @@ export function SoftDeleteDialog(props: SoftDeleteDialogProps) {
   return (
     <Dialog
       open={open}
-      title={t(restoring ? 'softDelete.restoreTitle' : 'softDelete.title')}
+      title={title ?? t(restoring ? 'softDelete.restoreTitle' : 'softDelete.title')}
       preventClose={pending}
       onClose={() => {
         if (!pending) {

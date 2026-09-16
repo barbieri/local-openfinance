@@ -40,7 +40,10 @@ The detail page can soft-delete one active investment through
 `POST /api/investments/<id>/delete` with an optional reason. The endpoint uses
 the existing soft-delete record, never hard-deletes the position or its child
 movements, and returns 404 for an unknown id. A deleted detail page has a
-banner with its deletion time and reason and no longer offers Delete.
+banner with its deletion time and reason and offers Restore in the same action
+area. `POST /api/investments/<id>/restore` confirms without a reason, clears
+both deletion metadata fields, and returns the position and its movements to
+normal views and reports without changing imported or related local data.
 
 ## Filters
 

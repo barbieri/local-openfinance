@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendDeletedVisibilityPredicate,
   normalizeDeleteReason,
+  restoreInvestment,
   restoreTransaction,
   SoftDeleteTargetNotFoundError,
   softDeleteInvestment,
@@ -164,6 +165,48 @@ describe('entry soft deletion', () => {
       delete_reason: null,
     });
     expect(() => restoreTransaction(db, 'missing-transaction')).toThrow(
+      SoftDeleteTargetNotFoundError,
+    );
+  });
+
+  it('restores a deleted investment without changing its imported data or movements', () => {
+    const db = seededDatabase();
+    const investmentRaw = loadRawJson(db, 'investments', 'investment-1');
+    softDeleteInvestment(db, {
+      investmentId: 'investment-1',
+      deleteReason: 'provider duplicate',
+      deletedAt: FIRST_DELETE_AT,
+    });
+
+    expect(restoreInvestment(db, 'investment-1')).toEqual({
+      investmentId: 'investment-1',
+      restored: true,
+    });
+    expect(loadDeletionMetadata(db, 'investments', 'investment-1')).toEqual({
+      deleted_at: null,
+      delete_reason: null,
+    });
+    expect(loadRawJson(db, 'investments', 'investment-1')).toBe(investmentRaw);
+    expect(countRows(db, 'investment_transactions', 'investment_id', 'investment-1')).toBe(1);
+  });
+
+  it('makes restoring an active investment a no-op and rejects a missing investment', () => {
+    const db = seededDatabase();
+
+    expect(restoreInvestment(db, 'investment-1')).toEqual({
+      investmentId: 'investment-1',
+      restored: false,
+    });
+    db.prepare("UPDATE investments SET delete_reason = 'stale' WHERE id = 'investment-1'").run();
+    expect(restoreInvestment(db, 'investment-1')).toEqual({
+      investmentId: 'investment-1',
+      restored: true,
+    });
+    expect(loadDeletionMetadata(db, 'investments', 'investment-1')).toEqual({
+      deleted_at: null,
+      delete_reason: null,
+    });
+    expect(() => restoreInvestment(db, 'missing-investment')).toThrow(
       SoftDeleteTargetNotFoundError,
     );
   });

@@ -123,4 +123,53 @@ describe('investment detail web API', () => {
     });
     expect(missing.status).toBe(404);
   });
+
+  it('restores a deleted investment to normal views without changing its imported data', async () => {
+    const app = createApp();
+    const headers = { Authorization: `Bearer ${TOKEN}`, 'Content-Type': 'application/json' };
+    const initialDetail = await app.request('/api/investments/inv-1', { headers });
+    const initialBody = (await initialDetail.json()) as {
+      readonly investment: { readonly raw_json: unknown };
+    };
+
+    const deleted = await app.request('/api/investments/inv-1/delete', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ deleteReason: 'provider duplicate' }),
+    });
+    expect(deleted.status).toBe(200);
+
+    const restored = await app.request('/api/investments/inv-1/restore', {
+      method: 'POST',
+      headers,
+    });
+    expect(restored.status).toBe(200);
+    await expect(restored.json()).resolves.toEqual({ investmentId: 'inv-1', restored: true });
+
+    const restoredDetail = await app.request('/api/investments/inv-1', { headers });
+    await expect(restoredDetail.json()).resolves.toMatchObject({
+      investment: {
+        db: { deleted_at: null, delete_reason: null },
+        raw_json: initialBody.investment.raw_json,
+      },
+    });
+    const visible = await app.request('/api/investments?status=all', { headers });
+    const visibleBody = (await visible.json()) as { readonly rows: unknown[] };
+    expect(visibleBody.rows).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'inv-1' })]),
+    );
+
+    const retried = await app.request('/api/investments/inv-1/restore', {
+      method: 'POST',
+      headers,
+    });
+    await expect(retried.json()).resolves.toEqual({ investmentId: 'inv-1', restored: false });
+
+    const missing = await app.request('/api/investments/missing/restore', {
+      method: 'POST',
+      headers,
+    });
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({ error: 'Investment not found' });
+  });
 });

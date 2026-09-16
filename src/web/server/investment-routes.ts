@@ -1,5 +1,9 @@
 import type { Hono } from 'hono';
-import { SoftDeleteTargetNotFoundError, softDeleteInvestment } from '../../db/entry-deletion.js';
+import {
+  restoreInvestment,
+  SoftDeleteTargetNotFoundError,
+  softDeleteInvestment,
+} from '../../db/entry-deletion.js';
 import { enrichInvestmentRow, loadInvestmentRowById } from '../../db/investment-details.js';
 import { serializeInvestmentForJson } from '../../db/investments/present.js';
 import type { WebServerContext } from './context.js';
@@ -29,6 +33,17 @@ export function registerInvestmentRoutes(app: Hono, ctx: WebServerContext): void
           deleteReason: body.deleteReason,
         }),
       );
+    } catch (error) {
+      if (error instanceof SoftDeleteTargetNotFoundError) {
+        return c.json({ error: 'Investment not found', missingIds: error.missingIds }, 404);
+      }
+      throw error;
+    }
+  });
+
+  app.post('/api/investments/:investmentId/restore', (c) => {
+    try {
+      return c.json(restoreInvestment(ctx.db, c.req.param('investmentId')));
     } catch (error) {
       if (error instanceof SoftDeleteTargetNotFoundError) {
         return c.json({ error: 'Investment not found', missingIds: error.missingIds }, 404);

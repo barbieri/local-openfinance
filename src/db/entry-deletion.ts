@@ -20,6 +20,11 @@ export type RestoreTransactionResult = {
   readonly restored: boolean;
 };
 
+export type RestoreInvestmentResult = {
+  readonly investmentId: string;
+  readonly restored: boolean;
+};
+
 export type SoftDeleteTransactionsInput = {
   readonly transactionId: string;
   readonly additionalTransactionIds?: readonly string[] | undefined;
@@ -96,27 +101,42 @@ export function restoreTransaction(
   db: DatabaseSync,
   transactionId: string,
 ): RestoreTransactionResult {
-  const id = requireNonBlankAnchorId('transaction', transactionId);
+  const { id, restored } = restoreEntry(db, 'transactions', 'transaction', transactionId);
+  return { transactionId: id, restored };
+}
+
+export function restoreInvestment(db: DatabaseSync, investmentId: string): RestoreInvestmentResult {
+  const { id, restored } = restoreEntry(db, 'investments', 'investment', investmentId);
+  return { investmentId: id, restored };
+}
+
+function restoreEntry(
+  db: DatabaseSync,
+  table: 'transactions' | 'investments',
+  entryType: 'transaction' | 'investment',
+  candidateId: string,
+): { readonly id: string; readonly restored: boolean } {
+  const id = requireNonBlankAnchorId(entryType, candidateId);
 
   db.exec('BEGIN IMMEDIATE');
   try {
-    const row = db.prepare('SELECT id FROM transactions WHERE id = ?').get(id) as
+    const row = db.prepare(`SELECT id FROM ${table} WHERE id = ?`).get(id) as
       | { readonly id: string }
       | undefined;
     if (!row) {
-      throw new SoftDeleteTargetNotFoundError('transaction', [id]);
+      throw new SoftDeleteTargetNotFoundError(entryType, [id]);
     }
 
     const restored =
       db
         .prepare(
-          `UPDATE transactions
+          `UPDATE ${table}
            SET deleted_at = NULL, delete_reason = NULL
            WHERE id = ? AND (deleted_at IS NOT NULL OR delete_reason IS NOT NULL)`,
         )
         .run(id).changes > 0;
     db.exec('COMMIT');
-    return { transactionId: id, restored };
+    return { id, restored };
   } catch (error) {
     db.exec('ROLLBACK');
     throw error;

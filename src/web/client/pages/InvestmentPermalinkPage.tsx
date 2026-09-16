@@ -15,6 +15,8 @@ type InvestmentDetail = {
   readonly raw_json: unknown;
 };
 
+type DialogAction = 'delete' | 'restore';
+
 export function InvestmentPermalinkPage() {
   const { t } = useTranslation();
   const { investmentId, closeInvestmentPermalink } = useAppNavigation();
@@ -71,10 +73,10 @@ function InvestmentArticle({
   readonly investment: InvestmentDetail;
   readonly investmentId: string;
 }) {
-  const { t } = useTranslation();
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dialogAction, setDialogAction] = useState<DialogAction | null>(null);
   const deletedAt = asString(investment.db.deleted_at);
-  const deleteMutation = useInvestmentDelete(investmentId, () => setDeleteDialogOpen(false));
+  const deleteMutation = useInvestmentDelete(investmentId, () => setDialogAction(null));
+  const restoreMutation = useInvestmentRestore(investmentId, () => setDialogAction(null));
 
   return (
     <article className="space-y-4 rounded-lg border border-border bg-background p-4 shadow-sm">
@@ -85,16 +87,19 @@ function InvestmentArticle({
       <InvestmentHeading investment={investment} investmentId={investmentId} />
       <InvestmentDetails investment={investment} />
       <RawInvestmentJson rawJson={investment.raw_json} />
-      {!deletedAt ? <InvestmentDeleteAction onDelete={() => setDeleteDialogOpen(true)} /> : null}
-      {!deletedAt && deleteDialogOpen ? (
-        <SoftDeleteDialog
-          open={deleteDialogOpen}
-          description={t('investmentPermalink.deleteDescription')}
-          pending={deleteMutation.isPending}
-          onClose={() => setDeleteDialogOpen(false)}
-          onConfirm={(reason) => deleteMutation.mutate(reason)}
-        />
-      ) : null}
+      <InvestmentVisibilityAction
+        deleted={deletedAt !== null}
+        onDelete={() => setDialogAction('delete')}
+        onRestore={() => setDialogAction('restore')}
+      />
+      <InvestmentDeletionDialog
+        action={dialogAction}
+        deletePending={deleteMutation.isPending}
+        restorePending={restoreMutation.isPending}
+        onClose={() => setDialogAction(null)}
+        onDelete={(reason) => deleteMutation.mutate(reason)}
+        onRestore={() => restoreMutation.mutate()}
+      />
     </article>
   );
 }
@@ -110,6 +115,27 @@ function useInvestmentDelete(investmentId: string, onSuccess: () => void) {
       }),
     onSuccess: async () => {
       toast.success(t('investmentPermalink.deleted'));
+      onSuccess();
+      await queryClient.invalidateQueries({ queryKey: ['investment-detail', investmentId] });
+      await queryClient.invalidateQueries({ queryKey: ['investments'] });
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error'), { description: error.message, duration: Infinity });
+    },
+  });
+}
+
+function useInvestmentRestore(investmentId: string, onSuccess: () => void) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () =>
+      apiJson<{ investmentId: string; restored: boolean }>(
+        `/api/investments/${investmentId}/restore`,
+        { method: 'POST' },
+      ),
+    onSuccess: async () => {
+      toast.success(t('investmentPermalink.restored'));
       onSuccess();
       await queryClient.invalidateQueries({ queryKey: ['investment-detail', investmentId] });
       await queryClient.invalidateQueries({ queryKey: ['investments'] });
@@ -173,18 +199,75 @@ function RawInvestmentJson({ rawJson }: { readonly rawJson: unknown }) {
   );
 }
 
-function InvestmentDeleteAction({ onDelete }: { readonly onDelete: () => void }) {
+function InvestmentVisibilityAction({
+  deleted,
+  onDelete,
+  onRestore,
+}: {
+  readonly deleted: boolean;
+  readonly onDelete: () => void;
+  readonly onRestore: () => void;
+}) {
   const { t } = useTranslation();
   return (
     <div className="flex justify-end">
       <button
         type="button"
-        className="rounded bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground"
-        onClick={onDelete}
+        className={
+          deleted
+            ? 'rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground'
+            : 'rounded bg-destructive px-3 py-1.5 text-sm font-medium text-destructive-foreground'
+        }
+        onClick={deleted ? onRestore : onDelete}
       >
-        {t('softDelete.delete')}
+        {deleted ? t('softDelete.restore') : t('softDelete.delete')}
       </button>
     </div>
+  );
+}
+
+function InvestmentDeletionDialog({
+  action,
+  deletePending,
+  restorePending,
+  onClose,
+  onDelete,
+  onRestore,
+}: {
+  readonly action: DialogAction | null;
+  readonly deletePending: boolean;
+  readonly restorePending: boolean;
+  readonly onClose: () => void;
+  readonly onDelete: (reason: string) => void;
+  readonly onRestore: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (action === null) {
+    return null;
+  }
+  if (action === 'delete') {
+    return (
+      <SoftDeleteDialog
+        open
+        title={t('investmentPermalink.deleteTitle')}
+        description={t('investmentPermalink.deleteDescription')}
+        pending={deletePending}
+        onClose={onClose}
+        onConfirm={onDelete}
+      />
+    );
+  }
+  return (
+    <SoftDeleteDialog
+      open
+      mode="restore"
+      title={t('investmentPermalink.restoreTitle')}
+      description={t('investmentPermalink.restoreDescription')}
+      pending={restorePending}
+      onClose={onClose}
+      onConfirm={onRestore}
+    />
   );
 }
 
