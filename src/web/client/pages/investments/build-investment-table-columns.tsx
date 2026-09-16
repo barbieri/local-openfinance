@@ -19,6 +19,7 @@ export function buildInvestmentTableColumns(input: {
   readonly visibleColumns: ReadonlySet<InvestmentColumnKey>;
   readonly hiddenByGroup: InvestmentColumnKey | undefined;
   readonly allocationById: ReadonlyMap<string, number>;
+  readonly onOpenInvestment: (investmentId: string) => void;
   readonly t: ReturnType<typeof useTranslation>['t'];
 }): ColumnDef<Record<string, unknown>, unknown>[] {
   const h = createColumnHelper<Record<string, unknown>>();
@@ -48,7 +49,15 @@ export function buildInvestmentTableColumns(input: {
       id: 'name',
       header: () => input.t('columns.name'),
       enableSorting: true,
-      cell: ({ row }) => String(row.original.display_name ?? row.original.name ?? '—'),
+      cell: ({ row }) => (
+        <button
+          type="button"
+          className="text-left font-medium text-primary underline-offset-2 hover:underline"
+          onClick={() => input.onOpenInvestment(String(row.original.id))}
+        >
+          {String(row.original.display_name ?? row.original.name ?? '—')}
+        </button>
+      ),
     }),
     h.accessor('code', { id: 'code', header: () => input.t('columns.code'), enableSorting: true }),
     h.accessor('type', { id: 'type', header: () => input.t('columns.type'), enableSorting: true }),

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   buildAppHash,
+  buildInvestmentHash,
   buildReportsHash,
   buildTransactionHash,
   parseAppHash,
@@ -80,11 +81,20 @@ describe('app hash routing', () => {
     });
   });
 
+  it('parses investment permalink hashes', () => {
+    expect(parseAppHash('#/investment/inv-123')).toEqual({
+      route: 'investment',
+      investmentId: 'inv-123',
+    });
+    expect(parseAppHash('#/investment/')).toMatchObject({ route: 'tab', tab: 'investments' });
+  });
+
   it('builds tab hashes', () => {
     expect(buildAppHash('investments')).toBe('#/investments');
     expect(buildAppHash('transactions', 'payload')).toBe('#/transactions/s=payload');
     expect(buildAppHash('sync', 'payload')).toBe('#/sync');
     expect(buildTransactionHash('abc-123')).toBe('#/transaction/abc-123');
+    expect(buildInvestmentHash('inv-123')).toBe('#/investment/inv-123');
   });
 
   it('parses reports inner hashes', () => {

@@ -23,6 +23,22 @@ When a status filter is selected, it is sent as:
 Parsed investment fields are persisted during sync and used by list/API layers.
 See `sync-openfinance.md`.
 
+Deleted positions are hidden from this ordinary list regardless of the selected
+status filter. Their child investment movements are also excluded from normal
+classification, list, net-worth, and report inputs.
+
+## Permalink and deletion
+
+Selecting an investment name opens `#/investment/<id>`. The permalink fetches
+`GET /api/investments/<id>` and remains readable after deletion. It presents
+the persisted fields, parsed fields, and formatted raw JSON.
+
+The detail page can soft-delete one active investment through
+`POST /api/investments/<id>/delete` with an optional reason. The endpoint uses
+the existing soft-delete record, never hard-deletes the position or its child
+movements, and returns 404 for an unknown id. A deleted detail page has a
+banner with its deletion time and reason and no longer offers Delete.
+
 ## Filters
 
 The tab has a client-side search field.

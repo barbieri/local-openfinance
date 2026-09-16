@@ -42,7 +42,10 @@ import {
 import type { EnrichedAccount } from '../../db/account-list-details.js';
 import { listEnrichedAccounts, listEnrichedCreditCards } from '../../db/account-list-details.js';
 import { formatAccountDetailsPlain } from '../../db/accounts/present.js';
-import { TransactionNotActiveError } from '../../db/active-transaction-write.js';
+import {
+  EntryNotActiveError,
+  TransactionNotActiveError,
+} from '../../db/active-transaction-write.js';
 import {
   countAnnotationLabelUsage,
   createAnnotationLabel,
@@ -75,6 +78,7 @@ import { authMiddleware } from './auth.js';
 import { BackgroundJobManager } from './background-jobs.js';
 import { buildConnectionById, type WebServerContext } from './context.js';
 import { registerIntelligenceRoutes } from './intelligence-routes.js';
+import { registerInvestmentRoutes } from './investment-routes.js';
 import { registerJobRoutes, streamJobEvents } from './job-routes.js';
 import { buildCategoryIndexForLocale, parseRequestLocale } from './request-locale.js';
 import {
@@ -244,6 +248,7 @@ export function createWebApp(ctx: WebServerContext): Hono {
       }),
     });
   });
+  registerInvestmentRoutes(app, ctx);
 
   app.get('/api/loans', (c) => {
     const loans = listEnrichedLoans(ctx.db);
@@ -526,6 +531,9 @@ export function createWebApp(ctx: WebServerContext): Hono {
     }
     if (error instanceof TransactionNotActiveError) {
       return c.json({ error: 'Transaction not found' }, 404);
+    }
+    if (error instanceof EntryNotActiveError) {
+      return c.json({ error: 'Entry not found' }, 404);
     }
     if (isSqliteQueryError(error)) {
       return c.json({ error: formatSqliteUserMessage(error) }, 500);

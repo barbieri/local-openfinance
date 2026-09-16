@@ -96,9 +96,15 @@ export type ParsedTransactionHash = {
   readonly transactionId: string;
 };
 
-export type ParsedAppHash = ParsedTabHash | ParsedTransactionHash;
+export type ParsedInvestmentHash = {
+  readonly route: 'investment';
+  readonly investmentId: string;
+};
+
+export type ParsedAppHash = ParsedTabHash | ParsedTransactionHash | ParsedInvestmentHash;
 
 const TRANSACTION_ROUTE = 'transaction';
+const INVESTMENT_ROUTE = 'investment';
 
 export function parseAppHash(hash?: string): ParsedAppHash {
   const rawHash = hash ?? readBrowserHash();
@@ -120,12 +126,9 @@ export function parseAppHash(hash?: string): ParsedAppHash {
   const firstSegment = slashIndex >= 0 ? path.slice(0, slashIndex) : path;
   const rest = slashIndex >= 0 ? path.slice(slashIndex + 1) : '';
 
-  if (firstSegment === TRANSACTION_ROUTE) {
-    const transactionId = safeDecodeURIComponent(rest.split('/')[0]?.trim() ?? '');
-    if (transactionId.length > 0) {
-      return { route: 'transaction', transactionId };
-    }
-    return emptyTabHash('transactions');
+  const permalink = parsePermalinkHash(firstSegment, rest);
+  if (permalink) {
+    return permalink;
   }
 
   const tab = isTabId(firstSegment) ? firstSegment : 'transactions';
@@ -135,6 +138,19 @@ export function parseAppHash(hash?: string): ParsedAppHash {
   const tableStateEncoded = rest.startsWith('s=') ? rest.slice(2) : null;
 
   return { ...emptyTabHash(tab), tableStateEncoded };
+}
+
+function parsePermalinkHash(firstSegment: string, rest: string): ParsedAppHash | null {
+  const id = safeDecodeURIComponent(rest.split('/')[0]?.trim() ?? '');
+  if (firstSegment === TRANSACTION_ROUTE) {
+    return id.length > 0
+      ? { route: 'transaction', transactionId: id }
+      : emptyTabHash('transactions');
+  }
+  if (firstSegment === INVESTMENT_ROUTE) {
+    return id.length > 0 ? { route: 'investment', investmentId: id } : emptyTabHash('investments');
+  }
+  return null;
 }
 
 function emptyTabHash(tab: TabId): ParsedTabHash {
@@ -244,6 +260,10 @@ export function buildTransactionHash(transactionId: string): string {
   return `#/${TRANSACTION_ROUTE}/${encodeURIComponent(transactionId)}`;
 }
 
+export function buildInvestmentHash(investmentId: string): string {
+  return `#/${INVESTMENT_ROUTE}/${encodeURIComponent(investmentId)}`;
+}
+
 export function transactionPermalinkUrl(transactionId: string): string {
   const browser = asBrowserGlobal(globalThis);
   const origin = browser?.location.origin ?? '';
@@ -266,6 +286,10 @@ export function replaceReportsHash(
 
 export function pushTransactionHash(transactionId: string): void {
   writeLocationHash(buildTransactionHash(transactionId), 'push');
+}
+
+export function pushInvestmentHash(investmentId: string): void {
+  writeLocationHash(buildInvestmentHash(investmentId), 'push');
 }
 
 export function replaceLocationHash(hash: string): void {

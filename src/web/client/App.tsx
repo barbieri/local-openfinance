@@ -45,6 +45,11 @@ const TransactionPermalinkPage = lazy(() =>
     default: module.TransactionPermalinkPage,
   })),
 );
+const InvestmentPermalinkPage = lazy(() =>
+  import('./pages/InvestmentPermalinkPage.js').then((module) => ({
+    default: module.InvestmentPermalinkPage,
+  })),
+);
 const ReportsPage = lazy(() =>
   import('./pages/ReportsPage.js').then((module) => ({ default: module.ReportsPage })),
 );
@@ -87,13 +92,20 @@ function AppShell() {
           <DesktopTabNav tab={tab} setTab={setTab} onLogout={invalidateAuth} />
         </div>
         <div className="sm:hidden">
-          <MobileTabSelect tab={tab} setTab={setTab} onLogout={invalidateAuth} />
+          <MobileTabSelect
+            tab={tab}
+            setTab={setTab}
+            isInvestmentPermalink={route.kind === 'investment'}
+            onLogout={invalidateAuth}
+          />
         </div>
       </header>
       <main className="p-4">
         <Suspense fallback={<p className="text-sm text-muted-foreground">…</p>}>
           {route.kind === 'transaction' ? (
             <TransactionPermalinkPage />
+          ) : route.kind === 'investment' ? (
+            <InvestmentPermalinkPage />
           ) : tab ? (
             <AppTabContent tab={tab} />
           ) : null}
@@ -163,10 +175,12 @@ function DesktopTabNav({
 function MobileTabSelect({
   tab,
   setTab,
+  isInvestmentPermalink,
   onLogout,
 }: {
   readonly tab: TabId | null;
   readonly setTab: (tab: TabId) => void;
+  readonly isInvestmentPermalink: boolean;
   readonly onLogout: () => void;
 }) {
   const { t } = useTranslation();
@@ -182,7 +196,9 @@ function MobileTabSelect({
         >
           {tab === null ? (
             <option value="" hidden>
-              {t('transactionPermalink.title')}
+              {isInvestmentPermalink
+                ? t('investmentPermalink.title')
+                : t('transactionPermalink.title')}
             </option>
           ) : null}
           {TABS.map((item) => (

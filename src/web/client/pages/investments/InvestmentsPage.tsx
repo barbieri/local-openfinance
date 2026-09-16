@@ -8,6 +8,7 @@ import { GrandTotalSummary } from '../../components/format/GrandTotalSummary.js'
 import { computeAllocationPercents } from '../../lib/allocation.js';
 import { apiJson } from '../../lib/api.js';
 import { sumAmountsByCurrency } from '../../lib/currency-totals.js';
+import { useAppNavigation } from '../../lib/navigation.js';
 import { buildInvestmentTableColumns } from './build-investment-table-columns.js';
 import {
   defaultInvestmentVisibleColumns,
@@ -25,6 +26,7 @@ import {
 
 export function InvestmentsPage() {
   const { t } = useTranslation();
+  const { openInvestmentPermalink } = useAppNavigation();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const [groupBy, setGroupBy] = useState<InvestmentGroupBy>('none');
@@ -90,9 +92,10 @@ export function InvestmentsPage() {
         visibleColumns: effectiveVisibleColumns,
         hiddenByGroup,
         allocationById,
+        onOpenInvestment: openInvestmentPermalink,
         t,
       }),
-    [allocationById, effectiveVisibleColumns, hiddenByGroup, t],
+    [allocationById, effectiveVisibleColumns, hiddenByGroup, openInvestmentPermalink, t],
   );
 
   const groupedRows = useMemo(() => {

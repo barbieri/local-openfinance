@@ -83,9 +83,11 @@ function loadNetWorth(
     }
   }
   const connectionWhere = accountIds.length === 0 ? '' : 'WHERE 0';
+  const investmentWhere = accountIds.length === 0 ? 'WHERE deleted_at IS NULL' : 'WHERE 0';
   const investments = allSql<{ readonly balance_cents: number | null; readonly currency: string }>(
     db,
-    `SELECT balance_cents, currency FROM investments ${connectionWhere}`,
+    `SELECT balance_cents, currency FROM investments
+     ${investmentWhere}`,
   );
   for (const row of investments) {
     const totals = getCurrencyTotals(totalsByCurrency, row.currency);

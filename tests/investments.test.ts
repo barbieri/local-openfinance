@@ -1,10 +1,14 @@
 import { DatabaseSync } from 'node:sqlite';
 import { describe, expect, it } from 'vitest';
+import { loadInvestmentTransactionEntry } from '../src/annotation/feature-text.js';
+import { listUnannotatedEntries } from '../src/annotation/store.js';
+import { softDeleteInvestment } from '../src/db/entry-deletion.js';
 import {
   enrichInvestmentRow,
   formatInvestmentIssuerLabel,
   formatInvestmentRateLabel,
   listEnrichedInvestments,
+  loadInvestments,
   parseInvestmentDetails,
   parseInvestmentGroupBy,
   parseInvestmentStatusFilter,
@@ -14,6 +18,8 @@ import {
   renderInvestmentsTree,
   serializeInvestmentForJson,
 } from '../src/db/investments/present.js';
+import { investmentsEntity, investmentTransactionsEntity } from '../src/db/list/entities.js';
+import { runListQuery } from '../src/db/list/query.js';
 import { migrateDatabase } from '../src/db/migrate.js';
 
 function seedInvestment(
@@ -240,6 +246,59 @@ describe('investment details', () => {
       listEnrichedInvestments(db, parseInvestmentStatusFilter('ACTIVE,TOTAL_WITHDRAWAL')),
     ).toHaveLength(2);
     expect(listEnrichedInvestments(db, parseInvestmentStatusFilter('all'))).toHaveLength(2);
+  });
+
+  it('hides deleted investments and their movements from normal list consumers', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedInvestment(db, {
+      id: 'inv-visible',
+      itemId: 'item-1',
+      type: 'EQUITY',
+      subtype: 'STOCK',
+      name: 'Visible',
+      rawJson: { status: 'ACTIVE' },
+    });
+    seedInvestment(db, {
+      id: 'inv-deleted',
+      itemId: 'item-1',
+      type: 'EQUITY',
+      subtype: 'STOCK',
+      name: 'Deleted',
+      rawJson: { status: 'ACTIVE' },
+    });
+    db.prepare(
+      `INSERT INTO investment_transactions (
+        id, investment_id, occurred_at, type, amount_cents, currency, raw_json, synced_at
+      ) VALUES ('movement-visible', 'inv-visible', '2026-06-01T00:00:00.000Z', 'BUY', 100, 'BRL', '{}', '2026-06-10T00:00:00.000Z'),
+      ('movement-deleted', 'inv-deleted', '2026-06-01T00:00:00.000Z', 'BUY', 100, 'BRL', '{}', '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    softDeleteInvestment(db, {
+      investmentId: 'inv-deleted',
+      deletedAt: '2026-09-15T12:00:00.000Z',
+    });
+
+    expect(listEnrichedInvestments(db, 'all').map((row) => row.id)).toEqual(['inv-visible']);
+    expect(loadInvestments(db).map((row) => row.id)).toEqual(['inv-visible']);
+    expect(
+      runListQuery(db, { entity: investmentsEntity, filters: [], limit: 10, offset: 0 }).rows.map(
+        (row) => row['id'],
+      ),
+    ).toEqual(['inv-visible']);
+    expect(
+      runListQuery(db, {
+        entity: investmentTransactionsEntity,
+        filters: [],
+        limit: 10,
+        offset: 0,
+      }).rows.map((row) => row['id']),
+    ).toEqual(['movement-visible']);
+    expect(
+      listUnannotatedEntries(db, { entryTypes: ['investment_transaction'], limit: 10 }).map(
+        (entry) => entry.entryId,
+      ),
+    ).toEqual(['movement-visible']);
+    expect(loadInvestmentTransactionEntry(db, 'movement-deleted')).toBeNull();
   });
 
   it('renders equity and fixed income lines with correct amounts', () => {

@@ -5,6 +5,7 @@ import { buildNestedAnnotationId } from '../src/annotation/nested-annotation-id.
 import {
   ensureAnnotationCategory,
   ensureAnnotationLabel,
+  findSimilarAnnotations,
   listUnannotatedEntries,
   saveEntryAnnotation,
 } from '../src/annotation/store.js';
@@ -85,5 +86,59 @@ describe('annotation store', () => {
     const left = vectorToBlob([1, 0, 0]);
     const right = vectorToBlob([1, 0, 0]);
     expect(cosineSimilarity(new Float32Array(left.buffer), new Float32Array(right.buffer))).toBe(1);
+  });
+
+  it('excludes deleted source entries from future classification suggestions', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedTransaction(db, 'tx-target');
+    db.exec(`
+      INSERT INTO transactions (
+        id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at, deleted_at
+      ) VALUES
+        ('tx-visible', 'acct-1', '2026-06-09T12:00:00.000Z', -5000, 'BRL', 'Visible', '{}', '2026-06-10T00:00:00.000Z', NULL),
+        ('tx-deleted', 'acct-1', '2026-06-08T12:00:00.000Z', -5000, 'BRL', 'Deleted', '{}', '2026-06-10T00:00:00.000Z', '2026-09-15T12:00:00.000Z');
+      INSERT INTO investments (
+        id, connection_item_id, type, name, currency, raw_json, synced_at, deleted_at
+      ) VALUES
+        ('investment-visible', 'item-1', 'FIXED_INCOME', 'Visible investment', 'BRL', '{}', '2026-06-10T00:00:00.000Z', NULL),
+        ('investment-deleted', 'item-1', 'FIXED_INCOME', 'Deleted investment', 'BRL', '{}', '2026-06-10T00:00:00.000Z', '2026-09-15T12:00:00.000Z');
+      INSERT INTO investment_transactions (
+        id, investment_id, occurred_at, type, amount_cents, currency, raw_json, synced_at
+      ) VALUES
+        ('movement-visible', 'investment-visible', '2026-06-09T12:00:00.000Z', 'BUY', 5000, 'BRL', '{}', '2026-06-10T00:00:00.000Z'),
+        ('movement-deleted-parent', 'investment-deleted', '2026-06-08T12:00:00.000Z', 'BUY', 5000, 'BRL', '{}', '2026-06-10T00:00:00.000Z');
+      INSERT INTO entry_annotations (
+        id, entry_type, entry_id, source, created_at, updated_at
+      ) VALUES
+        ('annotation-tx-visible', 'transaction', 'tx-visible', 'manual', '2026-06-10T00:00:00.000Z', '2026-06-10T00:00:00.000Z'),
+        ('annotation-tx-deleted', 'transaction', 'tx-deleted', 'manual', '2026-06-10T00:00:00.000Z', '2026-06-10T00:00:00.000Z'),
+        ('annotation-movement-visible', 'investment_transaction', 'movement-visible', 'manual', '2026-06-10T00:00:00.000Z', '2026-06-10T00:00:00.000Z'),
+        ('annotation-movement-deleted-parent', 'investment_transaction', 'movement-deleted-parent', 'manual', '2026-06-10T00:00:00.000Z', '2026-06-10T00:00:00.000Z'),
+        ('annotation-legacy', 'legacy', 'legacy-entry', 'manual', '2026-06-10T00:00:00.000Z', '2026-06-10T00:00:00.000Z');
+    `);
+    const insertEmbedding = db.prepare(
+      `INSERT INTO annotation_embeddings (annotation_id, model, dimensions, vector, created_at)
+       VALUES (?, 'test:mock', 3, ?, '2026-06-10T00:00:00.000Z')`,
+    );
+    for (const annotationId of [
+      'annotation-tx-visible',
+      'annotation-tx-deleted',
+      'annotation-movement-visible',
+      'annotation-movement-deleted-parent',
+      'annotation-legacy',
+    ]) {
+      insertEmbedding.run(annotationId, vectorToBlob([1, 0, 0]));
+    }
+
+    const entryIds = findSimilarAnnotations(db, [1, 0, 0], 'test', 0.9).map(
+      (match) => match.entryId,
+    );
+
+    expect(entryIds).toEqual(
+      expect.arrayContaining(['tx-visible', 'movement-visible', 'legacy-entry']),
+    );
+    expect(entryIds).not.toContain('tx-deleted');
+    expect(entryIds).not.toContain('movement-deleted-parent');
   });
 });

@@ -98,6 +98,7 @@ export const investmentsEntity: ListEntityDefinition = {
     synced_at: { type: 'date' },
   },
   defaultOrderBy: 'name ASC, id ASC',
+  staticWhere: 'deleted_at IS NULL',
 };
 
 export const investmentTransactionsEntity: ListEntityDefinition = {
@@ -114,6 +115,7 @@ export const investmentTransactionsEntity: ListEntityDefinition = {
     synced_at: { type: 'date' },
   },
   defaultOrderBy: 'occurred_at DESC, id ASC',
+  staticWhere: 'investment_id IN (SELECT id FROM investments WHERE deleted_at IS NULL)',
 };
 
 export const loansEntity: ListEntityDefinition = {

@@ -11,7 +11,11 @@ The database stores:
   marks an entry as deleted and `delete_reason` stores an optional trimmed
   reason. Soft deletion keeps the imported row, raw JSON, and related local
   records intact. Sync refreshes provider-owned fields without clearing either
-  local metadata field.
+  local metadata field. Embeddings from deleted transactions and movements of
+  deleted investments are excluded from future annotation suggestions. New
+  annotation writes reject deleted transactions and movements whose parent
+  investment is deleted. Stale embedding completions for either entry type are
+  ignored.
 - FTS5 text search.
 - Annotation categories.
 - Nested annotation labels.

@@ -139,6 +139,13 @@
         "deleteReason": { "type": ["string", "null"], "maxLength": 4000 }
       }
     },
+    "softDeleteInvestment": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "deleteReason": { "type": ["string", "null"], "maxLength": 4000 }
+      }
+    },
     "saveIntelligenceMemory": {
       "type": "object",
       "additionalProperties": false,

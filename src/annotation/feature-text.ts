@@ -241,7 +241,7 @@ export function loadInvestmentTransactionEntry(
               i.name AS investment_name, i.connection_item_id
        FROM investment_transactions it
        JOIN investments i ON i.id = it.investment_id
-       WHERE it.id = ?`,
+       WHERE it.id = ? AND i.deleted_at IS NULL`,
     )
     .get(entryId) as Record<string, unknown> | undefined;
 

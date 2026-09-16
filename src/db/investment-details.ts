@@ -6,7 +6,11 @@ import {
   resolveConnectionAccountGroup,
 } from './connection-account-group.js';
 import { resolveConnectionDisplayName } from './connection-labels.js';
-import type { DeletionMetadata } from './entry-deletion.js';
+import {
+  appendDeletedVisibilityPredicate,
+  type DeletedVisibility,
+  type DeletionMetadata,
+} from './entry-deletion.js';
 import { parseGroupByFields } from './grouped-list.js';
 
 export const DEFAULT_INVESTMENT_GROUP_BY = ['account', 'type', 'subtype', 'name'] as const;
@@ -138,12 +142,20 @@ const INVESTMENT_ROW_SELECT_SQL = `
   i.deleted_at, i.delete_reason,
   c.connector_name`;
 
-export function loadInvestments(db: DatabaseSync): InvestmentRow[] {
+export function loadInvestments(
+  db: DatabaseSync,
+  deletedVisibility: DeletedVisibility = 'hide',
+): InvestmentRow[] {
+  const whereParts: string[] = [];
+  appendDeletedVisibilityPredicate(whereParts, 'i.deleted_at', deletedVisibility);
+  const where = whereParts.length > 0 ? `WHERE ${whereParts.join(' AND ')}` : '';
+
   return db
     .prepare(
       `SELECT ${INVESTMENT_ROW_SELECT_SQL}
        FROM investments i
        JOIN connections c ON c.item_id = i.connection_item_id
+       ${where}
        ORDER BY c.connector_name ASC, i.type ASC, i.subtype ASC, i.name ASC, i.id ASC`,
     )
     .all()

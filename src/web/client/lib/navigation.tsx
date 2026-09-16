@@ -11,6 +11,7 @@ import {
   getAppHashServerSnapshot,
   getAppHashSnapshot,
   parseAppHash,
+  pushInvestmentHash,
   pushTransactionHash,
   type ReportsSection,
   replaceAppHash,
@@ -24,11 +25,15 @@ export type { TabId } from './tab-id.js';
 
 type AppRoute =
   | { readonly kind: 'tab'; readonly tab: TabId }
-  | { readonly kind: 'transaction'; readonly transactionId: string };
+  | { readonly kind: 'transaction'; readonly transactionId: string }
+  | { readonly kind: 'investment'; readonly investmentId: string };
 
 function routeFromParsed(parsed: ReturnType<typeof parseAppHash>): AppRoute {
   if (parsed.route === 'transaction') {
     return { kind: 'transaction', transactionId: parsed.transactionId };
+  }
+  if (parsed.route === 'investment') {
+    return { kind: 'investment', investmentId: parsed.investmentId };
   }
   return { kind: 'tab', tab: parsed.tab };
 }
@@ -37,9 +42,12 @@ type AppNavigationContextValue = {
   readonly route: AppRoute;
   readonly tab: TabId | null;
   readonly transactionId: string | null;
+  readonly investmentId: string | null;
   readonly setTab: (tab: TabId) => void;
   readonly openTransactionPermalink: (transactionId: string) => void;
   readonly closeTransactionPermalink: () => void;
+  readonly openInvestmentPermalink: (investmentId: string) => void;
+  readonly closeInvestmentPermalink: () => void;
   readonly reportsSection: ReportsSection | null;
   readonly reportsReportId: string | null;
   readonly reportsRunId: string | null;
@@ -85,6 +93,17 @@ export function AppNavigationProvider({ children }: { readonly children: ReactNo
     replaceLocationHash(nextHash);
   }, [permalinkReturnHash]);
 
+  const openInvestmentPermalink = useCallback((investmentId: string) => {
+    setPermalinkReturnHash(getAppHashSnapshot() || '#/investments');
+    pushInvestmentHash(investmentId);
+  }, []);
+
+  const closeInvestmentPermalink = useCallback(() => {
+    const nextHash = permalinkReturnHash ?? '#/investments';
+    setPermalinkReturnHash(null);
+    replaceLocationHash(nextHash);
+  }, [permalinkReturnHash]);
+
   const openTransactions = useCallback((filters: Record<string, string | string[]>) => {
     setTransactionFilters(filters);
     setPermalinkReturnHash(null);
@@ -105,6 +124,7 @@ export function AppNavigationProvider({ children }: { readonly children: ReactNo
 
   const tab = route.kind === 'tab' ? route.tab : null;
   const transactionId = route.kind === 'transaction' ? route.transactionId : null;
+  const investmentId = route.kind === 'investment' ? route.investmentId : null;
   const reportsSection =
     parsed.route === 'tab' && parsed.tab === 'reports'
       ? (parsed.reportsSection ?? 'catalog')
@@ -117,9 +137,12 @@ export function AppNavigationProvider({ children }: { readonly children: ReactNo
       route,
       tab,
       transactionId,
+      investmentId,
       setTab,
       openTransactionPermalink,
       closeTransactionPermalink,
+      openInvestmentPermalink,
+      closeInvestmentPermalink,
       reportsSection,
       reportsReportId,
       reportsRunId,
@@ -132,9 +155,12 @@ export function AppNavigationProvider({ children }: { readonly children: ReactNo
       route,
       tab,
       transactionId,
+      investmentId,
       setTab,
       openTransactionPermalink,
       closeTransactionPermalink,
+      openInvestmentPermalink,
+      closeInvestmentPermalink,
       reportsSection,
       reportsReportId,
       reportsRunId,

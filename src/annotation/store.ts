@@ -1,10 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { VISIBLE_ACCOUNT_TRANSACTIONS_WHERE } from '../db/account-links.js';
-import {
-  TransactionNotActiveError,
-  withActiveTransactionWrite,
-} from '../db/active-transaction-write.js';
+import { EntryNotActiveError, withActiveEntryWrite } from '../db/active-transaction-write.js';
 import { resolveStoredCategorySelectId } from '../db/category-select-id.js';
 import { getSql, runSql } from '../db/sqlite-query.js';
 import { estimateEmbeddingCostMicrousd } from '../intelligence/usage.js';
@@ -306,9 +303,11 @@ export function listUnannotatedEntries(
       .prepare(
         `SELECT it.id
          FROM investment_transactions it
+         JOIN investments i ON i.id = it.investment_id
          LEFT JOIN entry_annotations ea
            ON ea.entry_type = 'investment_transaction' AND ea.entry_id = it.id
          WHERE ea.id IS NULL
+           AND i.deleted_at IS NULL
          ORDER BY it.occurred_at DESC
          LIMIT ?`,
       )
@@ -336,11 +335,7 @@ export async function saveEntryAnnotation(
     written = writeEntryAnnotationUnchecked(db, input);
     return undefined;
   };
-  if (input.entryType === 'transaction') {
-    withActiveTransactionWrite(db, [input.entryId], write);
-  } else {
-    write();
-  }
+  withActiveEntryWrite(db, [{ entryType: input.entryType, entryId: input.entryId }], write);
   if (!written) {
     throw new Error(`Annotation row missing after save for ${input.entryId}`);
   }
@@ -422,6 +417,16 @@ export async function embedWrittenEntryAnnotation(
 
   const { config, featureText } = written.embedding;
   const embedded = await embedScoringText(config, featureText);
+  saveAnnotationEmbeddingForActiveEntry(db, written, written.annotationId, embedded, config);
+}
+
+function saveAnnotationEmbeddingForActiveEntry(
+  db: DatabaseSync,
+  entry: Pick<AnnotatableEntry, 'entryType' | 'entryId'>,
+  annotationId: string,
+  embedded: Awaited<ReturnType<typeof embedScoringText>>,
+  config: ScoringModelConfig,
+): void {
   const write = () => {
     runSql(
       db,
@@ -437,7 +442,7 @@ export async function embedWrittenEntryAnnotation(
          input_tokens = excluded.input_tokens,
          pricing_snapshot_json = excluded.pricing_snapshot_json,
          estimated_cost_microusd = excluded.estimated_cost_microusd`,
-      written.annotationId,
+      annotationId,
       embedded.model,
       embedded.dimensions,
       vectorToBlob(embedded.vector),
@@ -448,14 +453,10 @@ export async function embedWrittenEntryAnnotation(
     );
     return undefined;
   };
-  if (written.entryType !== 'transaction') {
-    write();
-    return;
-  }
   try {
-    withActiveTransactionWrite(db, [written.entryId], write);
+    withActiveEntryWrite(db, [{ entryType: entry.entryType, entryId: entry.entryId }], write);
   } catch (error) {
-    if (!(error instanceof TransactionNotActiveError)) {
+    if (!(error instanceof EntryNotActiveError)) {
       throw error;
     }
   }
@@ -469,29 +470,7 @@ export async function ensureAnnotationEmbedding(
 ): Promise<void> {
   const featureText = buildAnnotationFeatureText(entry);
   const embedded = await embedScoringText(embedding, featureText);
-  db.prepare(
-    `INSERT INTO annotation_embeddings (
-       annotation_id, model, dimensions, vector, created_at,
-       input_tokens, pricing_snapshot_json, estimated_cost_microusd
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-     ON CONFLICT(annotation_id) DO UPDATE SET
-       model = excluded.model,
-       dimensions = excluded.dimensions,
-       vector = excluded.vector,
-       created_at = excluded.created_at,
-       input_tokens = excluded.input_tokens,
-       pricing_snapshot_json = excluded.pricing_snapshot_json,
-       estimated_cost_microusd = excluded.estimated_cost_microusd`,
-  ).run(
-    annotationId,
-    embedded.model,
-    embedded.dimensions,
-    vectorToBlob(embedded.vector),
-    new Date().toISOString(),
-    embedded.inputTokens ?? null,
-    embedding.pricing ? JSON.stringify(embedding.pricing) : null,
-    estimateEmbeddingCostMicrousd(embedded.inputTokens ?? null, embedding.pricing),
-  );
+  saveAnnotationEmbeddingForActiveEntry(db, entry, annotationId, embedded, embedding);
 }
 
 export function findSimilarAnnotations(
@@ -507,7 +486,14 @@ export function findSimilarAnnotations(
               ea.entry_type, ea.entry_id, ea.category_id
        FROM annotation_embeddings ae
        JOIN entry_annotations ea ON ea.id = ae.annotation_id
-       WHERE ae.model LIKE ?`,
+       LEFT JOIN transactions t
+         ON ea.entry_type = 'transaction' AND t.id = ea.entry_id
+       LEFT JOIN investment_transactions it
+         ON ea.entry_type = 'investment_transaction' AND it.id = ea.entry_id
+       LEFT JOIN investments i ON i.id = it.investment_id
+       WHERE ae.model LIKE ?
+         AND (ea.entry_type <> 'transaction' OR (t.id IS NOT NULL AND t.deleted_at IS NULL))
+         AND (ea.entry_type <> 'investment_transaction' OR (i.id IS NOT NULL AND i.deleted_at IS NULL))`,
     )
     .all(`${modelPrefix}%`) as Record<string, unknown>[];
 
@@ -516,11 +502,11 @@ export function findSimilarAnnotations(
   for (const row of rows) {
     const dimensions = Number(row['dimensions']);
     const blob = row['vector'];
-    if (!(blob instanceof Buffer)) {
+    if (!(blob instanceof Uint8Array)) {
       continue;
     }
 
-    const vector = blobToVector(blob, dimensions);
+    const vector = blobToVector(Buffer.from(blob), dimensions);
     const similarity = cosineSimilarity(queryVector, vector);
     if (similarity < threshold) {
       continue;
