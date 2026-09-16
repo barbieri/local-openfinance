@@ -92,8 +92,26 @@ search, and grouping. Its separate grand total summary shows:
 
 - totals by currency
 
-Portfolio allocation is computed from investment allocation cents. Group
-allocation percent is computed against the filtered portfolio allocation total.
+Portfolio allocation is computed from investment allocation cents within each
+currency. Row and group allocation percentages use the filtered portfolio
+allocation total for their own currency; nominal cents from different currencies
+are never combined. A group with positions in multiple currencies shows one
+amount-and-percent pair for each currency.
+
+## Allocation charts
+
+The portfolio allocation disclosure appears before the grouped position list.
+It reads the same filtered rows as the table and groups positive allocation
+amounts separately by currency. It never adds values across currencies.
+
+Each currency panel drills down from type to subtype to code. A level with one
+choice resolves automatically and is omitted. The code pie still renders for a
+single code. Selecting a type, subtype, or code slice toggles it and dims its
+siblings. A changed filter can remove a selected slice; the chart derives a
+valid path from the current data without retaining a stale selection.
+
+Chart colors come from stable bucket ids, so filtering or changing a bucket's
+amount does not change its color.
 
 ## Related spec
 

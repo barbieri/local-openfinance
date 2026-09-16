@@ -1,17 +1,26 @@
 import { useQuery } from '@tanstack/react-query';
-import { useMemo, useState } from 'react';
+import { lazy, Suspense, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DataTable } from '../../components/data-table/DataTable.js';
 import { FormattedCurrency } from '../../components/format/FormattedCurrency.js';
 import { FormattedPercent } from '../../components/format/FormattedPercent.js';
 import { GrandTotalSummary } from '../../components/format/GrandTotalSummary.js';
-import { computeAllocationPercents } from '../../lib/allocation.js';
+import { Disclosure } from '../../components/ui/Disclosure.js';
+import { DisclosureContent } from '../../components/ui/DisclosureContent.js';
+import { DisclosureSummary } from '../../components/ui/DisclosureSummary.js';
 import { apiJson } from '../../lib/api.js';
-import { sumAmountsByCurrency } from '../../lib/currency-totals.js';
 import { useAppNavigation } from '../../lib/navigation.js';
 import { buildInvestmentTableColumns } from './build-investment-table-columns.js';
 import { InvestmentMatchSummary } from './InvestmentMatchSummary.js';
 import { InvestmentSidebar, InvestmentSidebarToggle } from './InvestmentSidebar.js';
+import {
+  buildInvestmentAllocationCurrencyCharts,
+  buildInvestmentAllocationModel,
+  clearInvestmentAllocationChartSelections,
+  type InvestmentAllocationPosition,
+  type InvestmentAllocationSelection,
+  summarizeInvestmentAllocationGroup,
+} from './investment-allocation-chart-data.js';
 import {
   buildInvestmentViewSummary,
   DEFAULT_INVESTMENT_GROUP_BY,
@@ -31,6 +40,34 @@ import {
   updateInvestmentViewForStatusFilter,
 } from './investments-page-helpers.js';
 
+const InvestmentAllocationCharts = lazy(() =>
+  import('./InvestmentAllocationCharts.js').then((module) => ({
+    default: module.InvestmentAllocationCharts,
+  })),
+);
+
+function readableInvestmentValue(value: unknown, fallback: string): string {
+  return typeof value === 'string' && value.trim() ? value.trim() : fallback;
+}
+
+function investmentAllocationPosition(row: Record<string, unknown>): InvestmentAllocationPosition {
+  const id = String(row.id ?? '');
+  const code = readableInvestmentValue(row.code, '');
+  return {
+    id,
+    currency: readableInvestmentValue(row.currency, 'BRL'),
+    type: readableInvestmentValue(row.type, 'Unknown'),
+    subtype: readableInvestmentValue(row.subtype, 'Unknown'),
+    code: code || null,
+    displayName: readableInvestmentValue(
+      row.display_name,
+      readableInvestmentValue(row.name, id || 'Unknown'),
+    ),
+    totalCents: investmentAmountCents(row),
+    allocationCents: investmentAllocationCents(row),
+  };
+}
+
 export function InvestmentsPage() {
   const { t } = useTranslation();
   const { openInvestmentPermalink } = useAppNavigation();
@@ -38,6 +75,10 @@ export function InvestmentsPage() {
   const [statusFilter, setStatusFilter] = useState('ACTIVE');
   const [groupBy, setGroupBy] = useState<InvestmentGroupBy>(DEFAULT_INVESTMENT_GROUP_BY);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [chartsOpen, setChartsOpen] = useState(false);
+  const [chartSelections, setChartSelections] = useState<
+    Readonly<Record<string, InvestmentAllocationSelection>>
+  >({});
   const [visibleColumns, setVisibleColumns] = useState<ReadonlySet<InvestmentColumnKey>>(() =>
     defaultInvestmentVisibleColumns(true),
   );
@@ -71,29 +112,15 @@ export function InvestmentsPage() {
     [effectiveGroupBy, search, statusFilter],
   );
 
-  const allocationById = useMemo(() => {
-    const percents = computeAllocationPercents(
-      rows.map((row) => ({ ...row, balance_cents: investmentAllocationCents(row) })),
-      'balance_cents',
-    );
-    const map = new Map<string, number>();
-    rows.forEach((row, index) => {
-      const pct = percents.get(index);
-      if (pct !== undefined) {
-        map.set(String(row.id), pct);
-      }
-    });
-    return map;
-  }, [rows]);
-
-  const portfolioAllocationTotalCents = useMemo(
-    () => rows.reduce((sum, row) => sum + investmentAllocationCents(row), 0),
+  const allocationModel = useMemo(
+    () => buildInvestmentAllocationModel(rows.map(investmentAllocationPosition)),
     [rows],
   );
 
-  const portfolioTotalsByCurrency = useMemo(
-    () => sumAmountsByCurrency(rows, investmentAmountCents, (row) => String(row.currency ?? 'BRL')),
-    [rows],
+  const allocationCharts = useMemo(
+    () =>
+      chartsOpen ? buildInvestmentAllocationCurrencyCharts(allocationModel, chartSelections) : [],
+    [allocationModel, chartSelections, chartsOpen],
   );
 
   const hiddenByGroup = effectiveGroupBy !== 'none' ? GROUP_BY_COLUMN[effectiveGroupBy] : undefined;
@@ -103,16 +130,32 @@ export function InvestmentsPage() {
       buildInvestmentTableColumns({
         visibleColumns: effectiveVisibleColumns,
         hiddenByGroup,
-        allocationById,
+        allocationById: allocationModel.allocationById,
         onOpenInvestment: openInvestmentPermalink,
         t,
       }),
-    [allocationById, effectiveVisibleColumns, hiddenByGroup, openInvestmentPermalink, t],
+    [
+      allocationModel.allocationById,
+      effectiveVisibleColumns,
+      hiddenByGroup,
+      openInvestmentPermalink,
+      t,
+    ],
   );
 
   const groupedRows = useMemo(() => {
     if (effectiveGroupBy === 'none') {
-      return [{ key: 'all', label: null as string | null, rows }];
+      return [
+        {
+          key: 'all',
+          label: null as string | null,
+          rows,
+          summary: summarizeInvestmentAllocationGroup(
+            allocationModel,
+            rows.map((row) => String(row.id ?? '')),
+          ),
+        },
+      ];
     }
     const groups = new Map<
       string,
@@ -129,28 +172,20 @@ export function InvestmentsPage() {
     }
     const groupEntries = [...groups.entries()];
     groupEntries.sort(([, a], [, b]) => a.label.localeCompare(b.label));
-    return groupEntries.map(([key, group]) => {
-      const totalCents = group.rows.reduce((sum, row) => sum + investmentAmountCents(row), 0);
-      const groupAllocationTotalCents = group.rows.reduce(
-        (sum, row) => sum + investmentAllocationCents(row),
-        0,
-      );
-      return {
-        key,
-        label: group.label,
-        rows: group.rows,
-        totalCents,
-        allocationPct:
-          portfolioAllocationTotalCents > 0
-            ? groupAllocationTotalCents / portfolioAllocationTotalCents
-            : 0,
-        currency: String(group.rows[0]?.currency ?? 'BRL'),
-      };
-    });
-  }, [effectiveGroupBy, portfolioAllocationTotalCents, rows]);
+    return groupEntries.map(([key, group]) => ({
+      key,
+      label: group.label,
+      rows: group.rows,
+      summary: summarizeInvestmentAllocationGroup(
+        allocationModel,
+        group.rows.map((row) => String(row.id ?? '')),
+      ),
+    }));
+  }, [allocationModel, effectiveGroupBy, rows]);
 
   const handleStatusFilterChange = (next: string) => {
     setStatusFilter(next);
+    setChartSelections(clearInvestmentAllocationChartSelections);
     const updatedView = updateInvestmentViewForStatusFilter({
       statusFilter: next,
       groupBy,
@@ -158,6 +193,11 @@ export function InvestmentsPage() {
     });
     setGroupBy(updatedView.groupBy);
     setVisibleColumns(updatedView.visibleColumns);
+  };
+
+  const handleSearchChange = (next: string) => {
+    setSearch(next);
+    setChartSelections(clearInvestmentAllocationChartSelections);
   };
 
   const handleGroupByChange = (next: InvestmentGroupBy) => {
@@ -183,25 +223,42 @@ export function InvestmentsPage() {
       </div>
       <GrandTotalSummary
         label={t('table.grandTotal')}
-        totalsByCurrency={portfolioTotalsByCurrency}
+        totalsByCurrency={allocationModel.amountTotalsByCurrency}
       />
+      <Disclosure className="bg-muted/20" open={chartsOpen} onOpenChange={setChartsOpen}>
+        <DisclosureSummary>
+          <span className="font-medium">{t('investmentCharts.title')}</span>
+        </DisclosureSummary>
+        <DisclosureContent>
+          {chartsOpen && (
+            <Suspense fallback={<p className="text-sm text-muted-foreground">…</p>}>
+              <InvestmentAllocationCharts
+                charts={allocationCharts}
+                onSelect={(currency, selection) =>
+                  setChartSelections((current) => ({ ...current, [currency]: selection }))
+                }
+              />
+            </Suspense>
+          )}
+        </DisclosureContent>
+      </Disclosure>
       {groupedRows.map((group) => (
         <div key={group.key}>
           {group.label && (
             <h3 className="mb-1 flex flex-wrap items-baseline gap-2 text-sm font-semibold text-muted-foreground">
               <span>{group.label}</span>
-              {'totalCents' in group && (
-                <>
+              {group.summary.currencies.map((currencySummary) => (
+                <span key={currencySummary.currency} className="inline-flex items-baseline gap-1">
                   <FormattedCurrency
-                    amountCents={Number(group.totalCents ?? 0)}
-                    currency={String(group.currency ?? 'BRL')}
+                    amountCents={currencySummary.totalCents}
+                    currency={currencySummary.currency}
                     signed={false}
                   />
-                  {'allocationPct' in group && (
-                    <FormattedPercent value={Number(group.allocationPct ?? 0)} decimals={1} />
+                  {currencySummary.allocationPercent === null ? null : (
+                    <FormattedPercent value={currencySummary.allocationPercent} decimals={1} />
                   )}
-                </>
-              )}
+                </span>
+              ))}
             </h3>
           )}
           <DataTable columns={columns} data={group.rows} emptyMessage={t('table.empty')} />
@@ -211,7 +268,7 @@ export function InvestmentsPage() {
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
         search={search}
-        onSearchChange={setSearch}
+        onSearchChange={handleSearchChange}
         statusFilter={statusFilter}
         onStatusFilterChange={handleStatusFilterChange}
         groupBy={effectiveGroupBy}
