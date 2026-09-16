@@ -14,7 +14,11 @@ import {
   getEnrichedTransaction,
   listEnrichedTransactionPage,
 } from '../../db/enriched-transactions.js';
-import { SoftDeleteTargetNotFoundError, softDeleteTransactions } from '../../db/entry-deletion.js';
+import {
+  restoreTransaction,
+  SoftDeleteTargetNotFoundError,
+  softDeleteTransactions,
+} from '../../db/entry-deletion.js';
 import {
   findFirstInstallmentTransactionId,
   getInstallmentPlanInfo,
@@ -154,6 +158,17 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
         deleteReason: body.deleteReason,
       });
       return c.json(result);
+    } catch (error) {
+      if (error instanceof SoftDeleteTargetNotFoundError) {
+        return c.json({ error: 'Transaction not found', missingIds: error.missingIds }, 404);
+      }
+      throw error;
+    }
+  });
+
+  app.post('/api/transactions/:transactionId/restore', (c) => {
+    try {
+      return c.json(restoreTransaction(ctx.db, c.req.param('transactionId')));
     } catch (error) {
       if (error instanceof SoftDeleteTargetNotFoundError) {
         return c.json({ error: 'Transaction not found', missingIds: error.missingIds }, 404);

@@ -143,6 +143,59 @@ describe('classify triage web API', () => {
     });
   });
 
+  it('restores one deleted transaction without affecting related local data', async () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedTriageTransaction(db);
+    db.prepare(
+      `INSERT INTO entry_annotations (id, entry_type, entry_id, source, created_at, updated_at)
+       VALUES ('annotation-1', 'transaction', 'tx-1', 'manual', '2026-06-10T00:00:00.000Z', '2026-06-10T00:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `UPDATE transactions
+       SET deleted_at = '2026-09-15T12:00:00.000Z', delete_reason = 'provider duplicate'
+       WHERE id = 'tx-1'`,
+    ).run();
+    process.env['LOCAL_OPENFINANCE_WEB_TOKEN'] = 'test-token';
+    const app = createWebApp({
+      db,
+      resolved: { config: { storage: { databasePath: ':memory:' }, annotation: {} } } as never,
+      jobs: new BackgroundJobManager(),
+    });
+    const headers = { Authorization: 'Bearer test-token', 'Content-Type': 'application/json' };
+
+    const hiddenBeforeRestore = await app.request('/api/transactions', { headers });
+    await expect(hiddenBeforeRestore.json()).resolves.toMatchObject({ rows: [] });
+
+    const restored = await app.request('/api/transactions/tx-1/restore', {
+      method: 'POST',
+      headers,
+    });
+    expect(restored.status).toBe(200);
+    await expect(restored.json()).resolves.toEqual({ transactionId: 'tx-1', restored: true });
+    expect(
+      db.prepare('SELECT deleted_at, delete_reason FROM transactions WHERE id = ?').get('tx-1'),
+    ).toEqual({ deleted_at: null, delete_reason: null });
+    expect(
+      db.prepare('SELECT COUNT(*) AS count FROM entry_annotations WHERE entry_id = ?').get('tx-1'),
+    ).toEqual({ count: 1 });
+    const visibleAfterRestore = await app.request('/api/transactions', { headers });
+    await expect(visibleAfterRestore.json()).resolves.toMatchObject({ rows: [{ id: 'tx-1' }] });
+
+    const retried = await app.request('/api/transactions/tx-1/restore', {
+      method: 'POST',
+      headers,
+    });
+    await expect(retried.json()).resolves.toEqual({ transactionId: 'tx-1', restored: false });
+
+    const missing = await app.request('/api/transactions/missing/restore', {
+      method: 'POST',
+      headers,
+    });
+    expect(missing.status).toBe(404);
+    await expect(missing.json()).resolves.toMatchObject({ error: 'Transaction not found' });
+  });
+
   it('does not expose transfer suggestions with a deleted leg', async () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);

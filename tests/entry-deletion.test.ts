@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   appendDeletedVisibilityPredicate,
   normalizeDeleteReason,
+  restoreTransaction,
   SoftDeleteTargetNotFoundError,
   softDeleteInvestment,
   softDeleteTransactions,
@@ -122,6 +123,49 @@ describe('entry soft deletion', () => {
       deleted_at: FIRST_DELETE_AT,
       delete_reason: 'migrated account',
     });
+  });
+
+  it('restores a deleted transaction without changing its imported or related data', () => {
+    const db = seededDatabase();
+    const transactionRaw = loadRawJson(db, 'transactions', 'transaction-1');
+    softDeleteTransactions(db, {
+      transactionId: 'transaction-1',
+      deleteReason: 'provider duplicate',
+      deletedAt: FIRST_DELETE_AT,
+    });
+
+    expect(restoreTransaction(db, 'transaction-1')).toEqual({
+      transactionId: 'transaction-1',
+      restored: true,
+    });
+    expect(loadDeletionMetadata(db, 'transactions', 'transaction-1')).toEqual({
+      deleted_at: null,
+      delete_reason: null,
+    });
+    expect(loadRawJson(db, 'transactions', 'transaction-1')).toBe(transactionRaw);
+    expect(countRows(db, 'entry_annotations', 'entry_id', 'transaction-1')).toBe(1);
+    expect(countRows(db, 'transfer_group_members', 'entry_id', 'transaction-1')).toBe(1);
+  });
+
+  it('makes restoring an active transaction a no-op and rejects a missing transaction', () => {
+    const db = seededDatabase();
+
+    expect(restoreTransaction(db, 'transaction-1')).toEqual({
+      transactionId: 'transaction-1',
+      restored: false,
+    });
+    db.prepare("UPDATE transactions SET delete_reason = 'stale' WHERE id = 'transaction-1'").run();
+    expect(restoreTransaction(db, 'transaction-1')).toEqual({
+      transactionId: 'transaction-1',
+      restored: true,
+    });
+    expect(loadDeletionMetadata(db, 'transactions', 'transaction-1')).toEqual({
+      deleted_at: null,
+      delete_reason: null,
+    });
+    expect(() => restoreTransaction(db, 'missing-transaction')).toThrow(
+      SoftDeleteTargetNotFoundError,
+    );
   });
 
   it('does not partially delete selected transactions when the anchor is missing', () => {

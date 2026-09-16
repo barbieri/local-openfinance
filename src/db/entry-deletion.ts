@@ -15,6 +15,11 @@ export type SoftDeleteResult = {
   readonly alreadyDeletedIds: readonly string[];
 };
 
+export type RestoreTransactionResult = {
+  readonly transactionId: string;
+  readonly restored: boolean;
+};
+
 export type SoftDeleteTransactionsInput = {
   readonly transactionId: string;
   readonly additionalTransactionIds?: readonly string[] | undefined;
@@ -85,6 +90,37 @@ export function softDeleteInvestment(
     input.deleteReason,
     input.deletedAt,
   );
+}
+
+export function restoreTransaction(
+  db: DatabaseSync,
+  transactionId: string,
+): RestoreTransactionResult {
+  const id = requireNonBlankAnchorId('transaction', transactionId);
+
+  db.exec('BEGIN IMMEDIATE');
+  try {
+    const row = db.prepare('SELECT id FROM transactions WHERE id = ?').get(id) as
+      | { readonly id: string }
+      | undefined;
+    if (!row) {
+      throw new SoftDeleteTargetNotFoundError('transaction', [id]);
+    }
+
+    const restored =
+      db
+        .prepare(
+          `UPDATE transactions
+           SET deleted_at = NULL, delete_reason = NULL
+           WHERE id = ? AND (deleted_at IS NOT NULL OR delete_reason IS NOT NULL)`,
+        )
+        .run(id).changes > 0;
+    db.exec('COMMIT');
+    return { transactionId: id, restored };
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
 }
 
 function softDeleteEntries(

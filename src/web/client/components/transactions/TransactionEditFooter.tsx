@@ -20,6 +20,7 @@ type TransactionEditFooterProps = {
   readonly onRecreateAssist: () => void;
   readonly onSave: () => void;
   readonly onDelete?: () => void;
+  readonly onRestore?: () => void;
 };
 
 function TransactionEditOptions({
@@ -69,22 +70,15 @@ function TransactionEditActions({
   onRecreateAssist,
   onSave,
   onDelete,
+  onRestore,
 }: TransactionEditFooterProps) {
   const { t } = useTranslation();
   const isDetailMode = mode === 'detail';
+  const deletionAction = resolveDeletionAction(isDetailMode, editable, onDelete, onRestore);
 
   return (
     <div className="flex flex-wrap justify-end gap-2">
-      {isDetailMode && editable && onDelete ? (
-        <button
-          type="button"
-          className="mr-3 rounded border border-destructive px-3 py-1.5 text-sm text-destructive disabled:opacity-50"
-          disabled={busy}
-          onClick={onDelete}
-        >
-          {t('softDelete.delete')}
-        </button>
-      ) : null}
+      <TransactionVisibilityAction editable={editable} busy={busy} onClick={deletionAction} />
       <button
         type="button"
         className="rounded border px-3 py-1.5 text-sm disabled:opacity-50"
@@ -131,6 +125,49 @@ function TransactionEditActions({
       ) : null}
     </div>
   );
+}
+
+function TransactionVisibilityAction({
+  editable,
+  busy,
+  onClick,
+}: {
+  readonly editable: boolean;
+  readonly busy: boolean;
+  readonly onClick: (() => void) | undefined;
+}) {
+  const { t } = useTranslation();
+
+  if (!onClick) {
+    return null;
+  }
+
+  return (
+    <button
+      type="button"
+      className={
+        editable
+          ? 'mr-3 rounded border border-destructive px-3 py-1.5 text-sm text-destructive disabled:opacity-50'
+          : 'mr-3 rounded bg-primary px-3 py-1.5 text-sm font-medium text-primary-foreground disabled:opacity-50'
+      }
+      disabled={busy}
+      onClick={onClick}
+    >
+      {editable ? t('softDelete.delete') : t('softDelete.restore')}
+    </button>
+  );
+}
+
+function resolveDeletionAction(
+  detail: boolean,
+  editable: boolean,
+  onDelete: (() => void) | undefined,
+  onRestore: (() => void) | undefined,
+): (() => void) | undefined {
+  if (!detail) {
+    return undefined;
+  }
+  return editable ? onDelete : onRestore;
 }
 
 export function TransactionEditFooter(props: TransactionEditFooterProps) {

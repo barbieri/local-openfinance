@@ -151,7 +151,10 @@ The detail dialog deletes the current transaction. If Update all selected
 transactions is checked, it also deletes only those explicit selected ids. It
 never infers installment siblings. It removes deleted ids from the page
 selection. Deleted details stay readable, but cannot assist, classify, relink,
-or update credit-card bill links.
+or update credit-card bill links. They offer Restore in the same action area.
+Restore confirms without a reason, clears both deletion metadata fields, and
+returns the transaction to normal views and reports without changing imported
+or related local data.
 
 ## Installments
 
@@ -173,6 +176,7 @@ Routes:
 
 - `GET /api/transactions/:id`
 - `GET /api/transactions/:id/installment-plan`
+- `POST /api/transactions/:id/restore`
 
 The hash `#/transaction/<id>` (singular) opens a dedicated detail page that
 reuses the edit panel. It is not listed in the header tabs. The detail dialog

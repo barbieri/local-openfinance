@@ -21,6 +21,8 @@ import type { TransactionDetailRow } from './transaction-detail-types.js';
 
 const EMPTY_SELECTED_TRANSACTION_IDS: readonly string[] = [];
 
+type DialogAction = 'delete' | 'restore';
+
 type AssistResponse = {
   readonly status:
     | 'ok'
@@ -125,7 +127,7 @@ export function TransactionEditPanel({
   const queryClient = useQueryClient();
   const isDetailMode = mode === 'detail';
   const editable = transaction.deleted_at === null;
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [dialogAction, setDialogAction] = useState<DialogAction | null>(null);
   const {
     applyToSelectedTransactions,
     setApplyToSelectedTransactions,
@@ -281,7 +283,7 @@ export function TransactionEditPanel({
       }),
     onSuccess: async (result) => {
       toast.success(t('softDelete.deleted', { count: result.requestedIds.length }));
-      setDeleteDialogOpen(false);
+      setDialogAction(null);
       await queryClient.invalidateQueries({ queryKey: ['transactions'] });
       await queryClient.invalidateQueries({ queryKey: ['transaction-detail', transaction.id] });
       await onSaved();
@@ -292,8 +294,17 @@ export function TransactionEditPanel({
     },
   });
 
+  const restoreMutation = useRestoreTransaction(transaction.id, async () => {
+    setDialogAction(null);
+    await onSaved();
+  });
+
   const busy =
-    savePending || saveMutation.isPending || assistMutation.isPending || deleteMutation.isPending;
+    savePending ||
+    saveMutation.isPending ||
+    assistMutation.isPending ||
+    deleteMutation.isPending ||
+    restoreMutation.isPending;
 
   const handleTriageSave = (): void => {
     onTriageSave?.({
@@ -354,21 +365,90 @@ export function TransactionEditPanel({
         onAssist={() => assistMutation.mutate(false)}
         onRecreateAssist={() => assistMutation.mutate(true)}
         onSave={isDetailMode ? () => saveMutation.mutate() : handleTriageSave}
-        onDelete={
-          isDetailMode && !transaction.deleted_at ? () => setDeleteDialogOpen(true) : undefined
-        }
+        onDelete={isDetailMode && editable ? () => setDialogAction('delete') : undefined}
+        onRestore={isDetailMode && !editable ? () => setDialogAction('restore') : undefined}
       />
-      {isDetailMode && deleteDialogOpen ? (
-        <SoftDeleteDialog
-          open
-          description={t('softDelete.description', {
-            count: 1 + (applyToSelectedTransactions ? otherSelectedTransactionIds.length : 0),
-          })}
-          pending={deleteMutation.isPending}
-          onClose={() => setDeleteDialogOpen(false)}
-          onConfirm={(reason) => deleteMutation.mutate(reason)}
-        />
-      ) : null}
+      <TransactionDeletionDialogs
+        action={dialogAction}
+        detail={isDetailMode}
+        deletedTransactionCount={
+          1 + (applyToSelectedTransactions ? otherSelectedTransactionIds.length : 0)
+        }
+        deletePending={deleteMutation.isPending}
+        restorePending={restoreMutation.isPending}
+        onClose={() => setDialogAction(null)}
+        onDelete={(reason) => deleteMutation.mutate(reason)}
+        onRestore={() => restoreMutation.mutate()}
+      />
     </article>
+  );
+}
+
+function useRestoreTransaction(transactionId: string, onRestored: () => Promise<void>) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: () =>
+      apiJson<{ transactionId: string; restored: boolean }>(
+        `/api/transactions/${transactionId}/restore`,
+        { method: 'POST' },
+      ),
+    onSuccess: async () => {
+      toast.success(t('softDelete.restored'));
+      await queryClient.invalidateQueries({ queryKey: ['transactions'] });
+      await queryClient.invalidateQueries({ queryKey: ['transaction-detail', transactionId] });
+      await onRestored();
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error'), { description: error.message, duration: Infinity });
+    },
+  });
+}
+
+function TransactionDeletionDialogs({
+  action,
+  detail,
+  deletedTransactionCount,
+  deletePending,
+  restorePending,
+  onClose,
+  onDelete,
+  onRestore,
+}: {
+  readonly action: DialogAction | null;
+  readonly detail: boolean;
+  readonly deletedTransactionCount: number;
+  readonly deletePending: boolean;
+  readonly restorePending: boolean;
+  readonly onClose: () => void;
+  readonly onDelete: (reason: string) => void;
+  readonly onRestore: () => void;
+}) {
+  const { t } = useTranslation();
+
+  if (!detail || action === null) {
+    return null;
+  }
+  if (action === 'delete') {
+    return (
+      <SoftDeleteDialog
+        open
+        description={t('softDelete.description', { count: deletedTransactionCount })}
+        pending={deletePending}
+        onClose={onClose}
+        onConfirm={onDelete}
+      />
+    );
+  }
+  return (
+    <SoftDeleteDialog
+      open
+      mode="restore"
+      description={t('softDelete.restoreDescription')}
+      pending={restorePending}
+      onClose={onClose}
+      onConfirm={onRestore}
+    />
   );
 }
