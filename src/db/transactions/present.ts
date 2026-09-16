@@ -210,6 +210,8 @@ export function serializeTransactionForJson(
       payment_type: transaction.payment_type,
       status: transaction.status,
       synced_at: transaction.synced_at,
+      deleted_at: transaction.deleted_at,
+      delete_reason: transaction.delete_reason,
       connection_item_id: transaction.connection_item_id,
       connector_name: transaction.connector_name,
     },

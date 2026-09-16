@@ -7,6 +7,11 @@ Runtime state is SQLite only through `storage.databasePath`.
 The database stores:
 
 - Synced Open Finance entities.
+- Optional soft-deletion metadata on transactions and investments. `deleted_at`
+  marks an entry as deleted and `delete_reason` stores an optional trimmed
+  reason. Soft deletion keeps the imported row, raw JSON, and related local
+  records intact. Sync refreshes provider-owned fields without clearing either
+  local metadata field.
 - FTS5 text search.
 - Annotation categories.
 - Nested annotation labels.
@@ -75,11 +80,14 @@ Sibling names are allowed under different parents through composite ids such as
 
 1. Enables WAL mode.
 2. Runs `PRAGMA quick_check`.
-3. Before pending migration 030 clears legacy report artifacts, writes a
+3. Before pending migration 034 adds soft-deletion fields, writes a standalone
+   `VACUUM INTO` backup beside the configured file-backed database. This backup
+   is mandatory for every database that has not applied migration 034.
+4. Before pending migration 030 clears legacy report artifacts, writes a
    standalone `VACUUM INTO` backup beside the configured database. This backup
    is mandatory when any legacy report, memory, chart, or chat row exists.
-4. Runs each migration and its `schema_migrations` marker in one transaction.
-5. Rebuilds FTS indexes.
+5. Runs each migration and its `schema_migrations` marker in one transaction.
+6. Rebuilds FTS indexes.
 
 FTS indexes include:
 

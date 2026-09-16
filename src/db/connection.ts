@@ -96,21 +96,30 @@ export function backupBeforeDestructiveMigrations(
   db: DatabaseSync,
   databasePath: string,
 ): string | null {
-  if (
-    databasePath === ':memory:' ||
-    !tableExists(db, 'schema_migrations') ||
-    migrationApplied(db, 30) ||
-    !hasLegacyIntelligenceArtifacts(db)
-  ) {
+  if (databasePath === ':memory:') {
     return null;
   }
+  const backupSlug = tableExists(db, 'schema_migrations')
+    ? pendingDestructiveMigrationBackupSlug(db)
+    : 'before-soft-delete-entries';
+  if (!backupSlug) return null;
   const stamp = new Date()
     .toISOString()
     .replaceAll(/[-:.TZ]/gu, '')
     .slice(0, 17);
-  const backupPath = `${databasePath}.${stamp}-${process.pid}-before-reset-legacy-intelligence.sqlite`;
+  const backupPath = `${databasePath}.${stamp}-${process.pid}-${backupSlug}.sqlite`;
   backupDatabase(db, backupPath);
   return backupPath;
+}
+
+function pendingDestructiveMigrationBackupSlug(db: DatabaseSync): string | null {
+  if (!migrationApplied(db, 34)) {
+    return 'before-soft-delete-entries';
+  }
+  if (!migrationApplied(db, 30) && hasLegacyIntelligenceArtifacts(db)) {
+    return 'before-reset-legacy-intelligence';
+  }
+  return null;
 }
 
 function migrationApplied(db: DatabaseSync, version: number): boolean {

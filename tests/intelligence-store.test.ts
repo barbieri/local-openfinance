@@ -118,6 +118,16 @@ describe('intelligence store', () => {
         'count'
       ],
     ).toBe(1);
+    expect(
+      db.prepare('SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 33').get()?.[
+        'count'
+      ],
+    ).toBe(1);
+    expect(
+      db.prepare('SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 34').get()?.[
+        'count'
+      ],
+    ).toBe(1);
 
     const first = getIntelligenceMemory(db, 'weekly');
     expect(first.markdown).toBe(INTELLIGENCE_MEMORY_SEED);
@@ -210,6 +220,8 @@ describe('intelligence store', () => {
         created_at TEXT NOT NULL,
         PRIMARY KEY (entry_type, entry_id)
       );
+      CREATE TABLE transactions (id TEXT PRIMARY KEY);
+      CREATE TABLE investments (id TEXT PRIMARY KEY);
     `);
     const markApplied = db.prepare(
       `INSERT INTO schema_migrations (version, applied_at) VALUES (?, '2026-08-23T00:00:00Z')`,
@@ -218,7 +230,7 @@ describe('intelligence store', () => {
       markApplied.run(version);
     }
 
-    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33]);
+    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34]);
     const columns = db
       .prepare('PRAGMA table_info(intelligence_runs)')
       .all()

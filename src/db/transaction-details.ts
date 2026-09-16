@@ -28,6 +28,7 @@ import {
   canChangeCreditCardBillLink,
   loadCreditCardBillLink,
 } from './credit-card-bill-links.js';
+import type { DeletionMetadata } from './entry-deletion.js';
 import { parseGroupByFields } from './grouped-list.js';
 import { getTransactionCategoryOverride } from './transaction-category-overrides.js';
 import {
@@ -117,7 +118,7 @@ export type TransactionRow = {
   readonly synced_at: string;
   readonly connection_item_id: string;
   readonly connector_name: string | null;
-};
+} & DeletionMetadata;
 
 export type EnrichedTransaction = Omit<TransactionRow, 'amount_in_account_currency_cents'> & {
   readonly display_name: string;
@@ -252,7 +253,7 @@ const TRANSACTION_ROW_SELECT_SQL = `
   t.category_id, cat.name AS category_original_name,
   cat.name_translated AS category_translated_name,
   t.merchant_name, t.payment_type, t.status,
-  t.raw_json, t.synced_at, a.connection_item_id, c.connector_name,
+  t.raw_json, t.synced_at, t.deleted_at, t.delete_reason, a.connection_item_id, c.connector_name,
   a.currency AS account_currency`;
 
 export function loadTransactions(db: DatabaseSync): TransactionRow[] {
@@ -819,6 +820,8 @@ function mapTransactionRow(row: unknown): TransactionRow {
     status: typeof record['status'] === 'string' ? record['status'] : null,
     raw_json: String(record['raw_json']),
     synced_at: String(record['synced_at']),
+    deleted_at: typeof record['deleted_at'] === 'string' ? record['deleted_at'] : null,
+    delete_reason: typeof record['delete_reason'] === 'string' ? record['delete_reason'] : null,
     connection_item_id: String(record['connection_item_id']),
     connector_name: typeof record['connector_name'] === 'string' ? record['connector_name'] : null,
   };

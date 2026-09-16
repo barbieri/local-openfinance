@@ -280,6 +280,8 @@ export function serializeInvestmentForJson(
       balance_cents: investment.balance_cents,
       currency: investment.currency,
       synced_at: investment.synced_at,
+      deleted_at: investment.deleted_at,
+      delete_reason: investment.delete_reason,
     },
     parsed: {
       display_name: investment.display_name,

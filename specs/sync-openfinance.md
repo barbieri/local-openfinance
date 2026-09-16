@@ -94,6 +94,10 @@ accounts where `account_group_members.is_canonical = 0`.
 Accounts, investments, and credit-card bills are always re-fetched for visible
 accounts because balances and bill status change.
 
+Transaction and investment upserts preserve their local soft-deletion metadata.
+Sync can refresh provider-owned fields on a deleted row, but it does not clear
+`deleted_at` or `delete_reason`.
+
 ## Account-currency amount
 
 Transaction sync stores `amount_in_account_currency_cents`.

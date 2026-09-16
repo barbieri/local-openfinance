@@ -6,6 +6,7 @@ import {
   resolveConnectionAccountGroup,
 } from './connection-account-group.js';
 import { resolveConnectionDisplayName } from './connection-labels.js';
+import type { DeletionMetadata } from './entry-deletion.js';
 import { parseGroupByFields } from './grouped-list.js';
 
 export const DEFAULT_INVESTMENT_GROUP_BY = ['account', 'type', 'subtype', 'name'] as const;
@@ -46,7 +47,8 @@ export type InvestmentRow = {
   readonly raw_json: string;
   readonly synced_at: string;
   readonly connector_name: string | null;
-} & InvestmentDetails;
+} & InvestmentDetails &
+  DeletionMetadata;
 
 export type EnrichedInvestment = InvestmentRow & {
   readonly display_name: string;
@@ -128,20 +130,40 @@ export function resolveInvestmentTotalCents(record: Record<string, unknown>): nu
   );
 }
 
+const INVESTMENT_ROW_SELECT_SQL = `
+  i.id, i.connection_item_id, i.type, i.subtype, i.name, i.code, i.balance_cents,
+  i.currency, i.raw_json, i.synced_at, i.status, i.isin, i.quantity, i.unit_price_cents,
+  i.total_cents, i.amount_cents, i.amount_withdrawal_cents, i.issuer, i.issuer_cnpj,
+  i.rate, i.rate_type, i.purchase_date, i.due_date, i.taxes_cents, i.taxes2_cents,
+  i.deleted_at, i.delete_reason,
+  c.connector_name`;
+
 export function loadInvestments(db: DatabaseSync): InvestmentRow[] {
   return db
     .prepare(
-      `SELECT i.id, i.connection_item_id, i.type, i.subtype, i.name, i.code, i.balance_cents,
-              i.currency, i.raw_json, i.synced_at, i.status, i.isin, i.quantity, i.unit_price_cents,
-              i.total_cents, i.amount_cents, i.amount_withdrawal_cents, i.issuer, i.issuer_cnpj,
-              i.rate, i.rate_type, i.purchase_date, i.due_date, i.taxes_cents, i.taxes2_cents,
-              c.connector_name
+      `SELECT ${INVESTMENT_ROW_SELECT_SQL}
        FROM investments i
        JOIN connections c ON c.item_id = i.connection_item_id
        ORDER BY c.connector_name ASC, i.type ASC, i.subtype ASC, i.name ASC, i.id ASC`,
     )
     .all()
     .map((row) => readInvestmentRow(row as Record<string, unknown>));
+}
+
+export function loadInvestmentRowById(
+  db: DatabaseSync,
+  investmentId: string,
+): InvestmentRow | null {
+  const row = db
+    .prepare(
+      `SELECT ${INVESTMENT_ROW_SELECT_SQL}
+       FROM investments i
+       JOIN connections c ON c.item_id = i.connection_item_id
+       WHERE i.id = ?`,
+    )
+    .get(investmentId) as Record<string, unknown> | undefined;
+
+  return row ? readInvestmentRow(row) : null;
 }
 
 export function readInvestmentRow(record: Record<string, unknown>): InvestmentRow {
@@ -159,6 +181,8 @@ export function readInvestmentRow(record: Record<string, unknown>): InvestmentRo
     currency: String(record['currency'] ?? 'BRL'),
     raw_json: String(record['raw_json'] ?? '{}'),
     synced_at: String(record['synced_at'] ?? ''),
+    deleted_at: typeof record['deleted_at'] === 'string' ? record['deleted_at'] : null,
+    delete_reason: typeof record['delete_reason'] === 'string' ? record['delete_reason'] : null,
     connector_name: typeof record['connector_name'] === 'string' ? record['connector_name'] : null,
     ...mergeInvestmentDetails(stored, parsed),
   };
