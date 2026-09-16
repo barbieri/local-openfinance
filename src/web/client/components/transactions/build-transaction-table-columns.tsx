@@ -11,6 +11,7 @@ import { resolveTransactionVisibleColumns } from '../../lib/transaction-visible-
 import { TransactionCategoryCell } from '../categories/TransactionCategoryCell.js';
 import { numericColumn } from '../data-table/column-meta.js';
 import { ForeignCurrencyAmount } from '../format/ForeignCurrencyAmount.js';
+import { DeletedEntryCell } from '../ui/DeletedEntryCell.js';
 import { TransferLinkCell } from './TransferLinkTooltip.js';
 import {
   TransactionTableAccountCell,
@@ -120,6 +121,18 @@ export function buildTransactionTableColumns(input: {
       meta: { align: 'center' },
       enableSorting: false,
       cell: ({ row }) => <TransferLinkCell transferGroup={row.original.transfer_group} />,
+    }),
+    helper.display({
+      id: 'deleted',
+      header: () => input.t('columns.deleted'),
+      meta: { align: 'center' },
+      enableSorting: false,
+      cell: ({ row }) => (
+        <DeletedEntryCell
+          deletedAt={row.original.deleted_at}
+          deleteReason={row.original.delete_reason}
+        />
+      ),
     }),
     helper.display({
       id: 'installments',

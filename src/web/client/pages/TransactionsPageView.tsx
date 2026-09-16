@@ -207,7 +207,7 @@ export function TransactionsPageView({
               .filter(Boolean)
               .join(' ')
           }
-          rowClickIgnoreColumnIds={['select', 'transfer']}
+          rowClickIgnoreColumnIds={['select', 'transfer', 'deleted']}
           stickyColumnClassNames={{
             select: 'sticky left-0 z-20 bg-background',
             date: 'sticky left-11 z-20 bg-background',

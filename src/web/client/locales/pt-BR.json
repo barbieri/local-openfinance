@@ -191,6 +191,7 @@
   "columns.installments": "Parcelas",
   "columns.subCategory": "Subcategoria",
   "columns.transfer": "Transferência",
+  "columns.deleted": "Excluída",
   "columns.name": "Nome",
   "columns.contract": "Contrato",
   "columns.dueDate": "Vencimento",

@@ -11,6 +11,9 @@ export function resolveTransactionVisibleColumns(
   if (filters['installments'] === 'hide') {
     hiddenColumns.add('installments');
   }
+  if (filters['deleted'] !== 'all' && filters['deleted'] !== 'only') {
+    hiddenColumns.add('deleted');
+  }
 
   const visible = new Set<TransactionColumnKey>();
   for (const key of visibleColumns) {

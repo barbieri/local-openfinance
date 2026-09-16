@@ -15,20 +15,12 @@ import { CollapsibleSidebar } from '../ui/CollapsibleSidebar.js';
 import { SidebarSection } from '../ui/SidebarSection.js';
 import { TransactionFiltersPanel } from './TransactionFiltersBar.js';
 import { MemoTransactionSidebarFilterSummary } from './TransactionSidebarFilterSummary.js';
+import {
+  TRANSACTION_COLUMN_KEYS,
+  type TransactionColumnKey,
+} from './transactions-page-column-keys.js';
 
-const TRANSACTION_COLUMN_KEYS = [
-  'date',
-  'account',
-  'merchant',
-  'description',
-  'category',
-  'labels',
-  'installments',
-  'amount',
-  'transfer',
-] as const;
-
-type TransactionColumnKey = (typeof TRANSACTION_COLUMN_KEYS)[number] | 'select';
+const TRANSACTION_DISPLAY_COLUMN_KEYS = TRANSACTION_COLUMN_KEYS.slice(1);
 
 type FilterSummaryPart = ReturnType<typeof buildTransactionFilterSummary>[number];
 
@@ -134,7 +126,7 @@ export function TransactionSidebar({
 
         <SidebarSection title={t('filters.columns')} defaultOpen={false}>
           <div className="space-y-3">
-            {TRANSACTION_COLUMN_KEYS.map((key) => (
+            {TRANSACTION_DISPLAY_COLUMN_KEYS.map((key) => (
               <div key={key} className="space-y-1">
                 <label className="flex items-center gap-2 text-sm">
                   <input
@@ -142,7 +134,7 @@ export function TransactionSidebar({
                     checked={visibleColumns.has(key)}
                     onChange={(e) => onToggleColumn(key, e.target.checked)}
                   />
-                  {t(`columns.${key === 'transfer' ? 'transfer' : key}`)}
+                  {t(`columns.${key}`)}
                 </label>
                 {key === 'category' && visibleColumns.has('category') && (
                   <label className="ml-6 flex flex-col gap-1 text-xs">

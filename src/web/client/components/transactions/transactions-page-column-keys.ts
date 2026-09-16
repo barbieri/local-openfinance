@@ -9,6 +9,7 @@ export const TRANSACTION_COLUMN_KEYS = [
   'installments',
   'amount',
   'transfer',
+  'deleted',
 ] as const;
 
 export type TransactionColumnKey = (typeof TRANSACTION_COLUMN_KEYS)[number];

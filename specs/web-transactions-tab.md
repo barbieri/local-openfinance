@@ -60,9 +60,11 @@ Grouped columns are automatically hidden from the visible table while preserving
 stored column preferences.
 
 The Advanced filters also hide their corresponding table columns while preserving
-stored column preferences. `transfers=hide` hides `transfer`, and
-`installments=hide` hides `installments`. Changing either filter back restores the
-column when it remains selected in the URL table state.
+stored column preferences. `transfers=hide` hides `transfer`,
+`installments=hide` hides `installments`, and the default deleted filter hides
+`deleted`. Show all or Deleted only restores `deleted` when it remains selected
+in the URL table state. The Deleted column marks deleted rows in red and exposes
+the deletion timestamp and optional reason through an accessible tooltip.
 
 Group headers expose:
 
@@ -85,7 +87,8 @@ Selection toolbar supports:
 `Edit selected` opens the detail dialog for the current selection in rendered
 table order.
 
-Click a row to open the detail dialog, except checkbox and transfer icon cells.
+Click a row to open the detail dialog, except checkbox, transfer icon, and
+deleted status cells.
 
 Row checkboxes support Gmail-style shift-click range selection in current table
 sort order.

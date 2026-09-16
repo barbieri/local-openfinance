@@ -191,6 +191,7 @@
   "columns.installments": "Installments",
   "columns.subCategory": "Sub-category",
   "columns.transfer": "Transfer",
+  "columns.deleted": "Deleted",
   "columns.name": "Name",
   "columns.contract": "Contract",
   "columns.dueDate": "Due date",

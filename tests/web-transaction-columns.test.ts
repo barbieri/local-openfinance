@@ -28,6 +28,23 @@ describe('transaction table columns', () => {
     expect(resolveTransactionVisibleColumns(allColumns, {})).toContain('installments');
   });
 
+  it('hides deleted by default and restores it for all deleted filters', () => {
+    expect(resolveTransactionVisibleColumns(allColumns, {})).not.toContain('deleted');
+    expect(resolveTransactionVisibleColumns(allColumns, { deleted: '' })).not.toContain('deleted');
+    expect(resolveTransactionVisibleColumns(allColumns, { deleted: 'all' })).toContain('deleted');
+    expect(resolveTransactionVisibleColumns(allColumns, { deleted: 'only' })).toContain('deleted');
+  });
+
+  it('preserves the deleted column preference while hidden', () => {
+    const selected = new Set<TransactionColumnKey>(['deleted']);
+
+    expect(resolveTransactionVisibleColumns(selected, {})).toEqual(new Set(['select']));
+    expect(resolveTransactionVisibleColumns(selected, { deleted: 'all' })).toEqual(
+      new Set(['deleted']),
+    );
+    expect(selected).toEqual(new Set(['deleted']));
+  });
+
   it('preserves selected columns so both columns return when filters are restored', () => {
     const selected = new Set<TransactionColumnKey>(['installments', 'transfer']);
 
