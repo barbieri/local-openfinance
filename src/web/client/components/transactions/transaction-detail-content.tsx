@@ -534,6 +534,76 @@ function TransactionPermalinkControls({ transactionId }: { readonly transactionI
   );
 }
 
+function TransactionTitlePrimaryRow({
+  transaction,
+  account,
+  accountLoading,
+  cardNumber,
+  installmentNumber,
+  totalInstallments,
+  purchaseDate,
+}: {
+  readonly transaction: TransactionDetailRow;
+  readonly account: Record<string, unknown> | null | undefined;
+  readonly accountLoading: boolean;
+  readonly cardNumber: string | null;
+  readonly installmentNumber: number | null;
+  readonly totalInstallments: number | null;
+  readonly purchaseDate: string | null;
+}) {
+  const showInstallmentTitle =
+    installmentNumber !== null && totalInstallments !== null && totalInstallments > 1;
+
+  return (
+    <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <FormattedDateTime value={transaction.display_occurred_at ?? transaction.occurred_at} />
+      {showInstallmentTitle ? (
+        <span className="text-muted-foreground tabular-nums">
+          ({installmentNumber}/{totalInstallments}
+          {purchaseDate ? (
+            <>
+              {' @ '}
+              <FormattedDate value={purchaseDate} />
+            </>
+          ) : null}
+          )
+        </span>
+      ) : null}
+      <ForeignCurrencyAmount
+        amountCents={transaction.amount_cents}
+        currency={transaction.currency}
+        accountCurrency={transaction.account_currency}
+        amountInAccountCurrencyCents={transaction.amount_in_account_currency_cents}
+      />
+      <span>
+        {accountLoading
+          ? '…'
+          : String(account?.display_name ?? account?.name ?? transaction.account_id)}
+        {cardNumber ? <span className="ml-2 text-muted-foreground">{cardNumber}</span> : null}
+      </span>
+      <TransactionPermalinkControls transactionId={transaction.id} />
+    </span>
+  );
+}
+
+function TransactionTitleMeta({ meta }: { readonly meta: TransactionEditTitleMeta | undefined }) {
+  const { t } = useTranslation();
+  if (!meta) {
+    return null;
+  }
+
+  return (
+    <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-normal text-muted-foreground">
+      {meta.confidence !== null && (
+        <span>
+          {t('triage.confidence')}: <Confidence value={meta.confidence} />
+        </span>
+      )}
+      {meta.usedClassifier && <span>{t('triage.usedClassifier')}</span>}
+    </span>
+  );
+}
+
 export function TransactionEditTitle({
   transaction,
   meta,
@@ -541,7 +611,6 @@ export function TransactionEditTitle({
   readonly transaction: TransactionDetailRow;
   readonly meta?: TransactionEditTitleMeta;
 }) {
-  const { t } = useTranslation();
   const { entity: account, isLoading: accountLoading } = useEntityRef(
     'accounts',
     transaction.account_id,
@@ -555,49 +624,19 @@ export function TransactionEditTitle({
   const totalInstallments =
     transaction.total_installments ?? transaction.credit_card?.total_installments ?? null;
   const purchaseDate = transaction.credit_card?.purchase_date?.slice(0, 10) ?? null;
-  const showInstallmentTitle =
-    installmentNumber !== null && totalInstallments !== null && totalInstallments > 1;
 
   return (
     <span className="flex flex-col gap-1">
-      <span className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <FormattedDateTime value={transaction.display_occurred_at ?? transaction.occurred_at} />
-        {showInstallmentTitle ? (
-          <span className="text-muted-foreground tabular-nums">
-            ({installmentNumber}/{totalInstallments}
-            {purchaseDate ? (
-              <>
-                {' @ '}
-                <FormattedDate value={purchaseDate} />
-              </>
-            ) : null}
-            )
-          </span>
-        ) : null}
-        <ForeignCurrencyAmount
-          amountCents={transaction.amount_cents}
-          currency={transaction.currency}
-          accountCurrency={transaction.account_currency}
-          amountInAccountCurrencyCents={transaction.amount_in_account_currency_cents}
-        />
-        <span>
-          {accountLoading
-            ? '…'
-            : String(account?.display_name ?? account?.name ?? transaction.account_id)}
-          {cardNumber ? <span className="ml-2 text-muted-foreground">{cardNumber}</span> : null}
-        </span>
-        <TransactionPermalinkControls transactionId={transaction.id} />
-      </span>
-      {meta ? (
-        <span className="flex flex-wrap gap-x-3 gap-y-1 text-xs font-normal text-muted-foreground">
-          {meta.confidence !== null && (
-            <span>
-              {t('triage.confidence')}: <Confidence value={meta.confidence} />
-            </span>
-          )}
-          {meta.usedClassifier && <span>{t('triage.usedClassifier')}</span>}
-        </span>
-      ) : null}
+      <TransactionTitlePrimaryRow
+        transaction={transaction}
+        account={account}
+        accountLoading={accountLoading}
+        cardNumber={cardNumber}
+        installmentNumber={installmentNumber}
+        totalInstallments={totalInstallments}
+        purchaseDate={purchaseDate}
+      />
+      <TransactionTitleMeta meta={meta} />
     </span>
   );
 }
@@ -705,11 +744,111 @@ function LinkedTransferSection({
   );
 }
 
-export function TransactionDetailContent({
+function TransactionMerchantFields({
+  transaction,
+}: {
+  readonly transaction: TransactionDetailRow;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      <DetailField label={t('columns.merchant')}>
+        {transaction.merchant_detail?.business_name ??
+          transaction.merchant_name ??
+          transaction.display_name}
+      </DetailField>
+      {transaction.merchant_detail?.business_name &&
+      transaction.merchant_name &&
+      transaction.merchant_detail.business_name !== transaction.merchant_name ? (
+        <DetailField label={t('columns.description')}>{transaction.merchant_name}</DetailField>
+      ) : null}
+      <DetailField label={t('columns.description')}>
+        {transaction.display_description ?? transaction.description ?? '—'}
+      </DetailField>
+    </>
+  );
+}
+
+function TransactionPaymentFields({ transaction }: { readonly transaction: TransactionDetailRow }) {
+  const { t } = useTranslation();
+  const paymentDocuments = useMemo(
+    () => readPaymentDocumentsFromRawJson(transaction.raw_json),
+    [transaction.raw_json],
+  );
+
+  return (
+    <>
+      {transaction.credit_card?.payee_mcc != null || transaction.credit_card?.payee_mcc_name ? (
+        <DetailField label={t('columns.mcc')}>
+          {transaction.credit_card.payee_mcc_name ?? '—'}
+          {transaction.credit_card.payee_mcc != null ? (
+            <span className="text-muted-foreground"> ({transaction.credit_card.payee_mcc})</span>
+          ) : null}
+        </DetailField>
+      ) : null}
+      {transaction.credit_card?.purchase_date ? (
+        <DetailField label={t('columns.purchaseDate')}>
+          <FormattedDate value={transaction.credit_card.purchase_date.slice(0, 10)} />
+        </DetailField>
+      ) : null}
+      {paymentDocuments.receiverName &&
+      !paymentDocuments.receiver &&
+      paymentDocuments.receiverName !== transaction.merchant_name ? (
+        <DetailField label={t('transactionDetail.receiverName')}>
+          {paymentDocuments.receiverName}
+        </DetailField>
+      ) : null}
+      <PaymentDocumentFields payer={paymentDocuments.payer} receiver={paymentDocuments.receiver} />
+    </>
+  );
+}
+
+function TransactionDetailFields({ transaction }: { readonly transaction: TransactionDetailRow }) {
+  return (
+    <section className="min-w-0 space-y-1">
+      <TransactionMerchantFields transaction={transaction} />
+      <TransactionPaymentFields transaction={transaction} />
+    </section>
+  );
+}
+
+function InstallmentPlanSection({
   transaction,
   active,
   locale,
-  assistReasoning,
+  onOpenTransaction,
+}: Pick<TransactionDetailContentProps, 'transaction' | 'active' | 'locale' | 'onOpenTransaction'>) {
+  const installmentNumber = transaction.installment_number;
+  const totalInstallments = transaction.total_installments;
+  if (
+    installmentNumber === null ||
+    totalInstallments === null ||
+    totalInstallments <= 1 ||
+    installmentNumber <= 1
+  ) {
+    return null;
+  }
+
+  return (
+    <InstallmentPlanSummary
+      transactionId={transaction.id}
+      installmentNumber={installmentNumber}
+      totalInstallments={totalInstallments}
+      amountInAccountCurrencyCents={transaction.amount_in_account_currency_cents}
+      accountCurrency={transaction.account_currency}
+      purchaseDate={transaction.credit_card?.purchase_date}
+      purchaseTotalCents={transaction.credit_card?.purchase_total_cents}
+      onOpenTransaction={onOpenTransaction}
+      enabled={active}
+      locale={locale}
+    />
+  );
+}
+
+function EditableTransactionDetails({
+  transaction,
+  active,
   categoryOverrideId,
   onCategoryOverrideIdChange,
   annotationCategoryId,
@@ -720,122 +859,80 @@ export function TransactionDetailContent({
   onSelectedLabelIdsChange,
   notes,
   onNotesChange,
-  onBillLinkSaved,
-  onOpenTransaction,
-  onUnlinkTransfer,
-  unlinkPending,
-}: TransactionDetailContentProps) {
-  const { t } = useTranslation();
-  const paymentDocuments = useMemo(
-    () => readPaymentDocumentsFromRawJson(transaction.raw_json),
-    [transaction.raw_json],
+}: Pick<
+  TransactionDetailContentProps,
+  | 'transaction'
+  | 'active'
+  | 'categoryOverrideId'
+  | 'onCategoryOverrideIdChange'
+  | 'annotationCategoryId'
+  | 'onAnnotationCategoryIdChange'
+  | 'annotationSubCategoryId'
+  | 'onAnnotationSubCategoryIdChange'
+  | 'selectedLabelIds'
+  | 'onSelectedLabelIdsChange'
+  | 'notes'
+  | 'onNotesChange'
+>) {
+  if (transaction.deleted_at) {
+    return null;
+  }
+
+  return (
+    <>
+      <TransactionClassificationForm
+        transaction={transaction}
+        categoryOverrideId={categoryOverrideId}
+        onCategoryOverrideIdChange={onCategoryOverrideIdChange}
+        annotationCategoryId={annotationCategoryId}
+        onAnnotationCategoryIdChange={onAnnotationCategoryIdChange}
+        annotationSubCategoryId={annotationSubCategoryId}
+        onAnnotationSubCategoryIdChange={onAnnotationSubCategoryIdChange}
+        selectedLabelIds={selectedLabelIds}
+        onSelectedLabelIdsChange={onSelectedLabelIdsChange}
+        notes={notes}
+        onNotesChange={onNotesChange}
+        enabled={active}
+      />
+      <PendingTransferSection
+        transactionId={transaction.id}
+        linked={Boolean(transaction.transfer_group)}
+      />
+    </>
   );
+}
+
+export function TransactionDetailContent(props: TransactionDetailContentProps) {
+  const { t } = useTranslation();
+  const { transaction } = props;
 
   return (
     <div className="min-w-0 space-y-4 text-sm">
       <DeletedTransactionBanner transaction={transaction} />
-      <section className="min-w-0 space-y-1">
-        <DetailField label={t('columns.merchant')}>
-          {transaction.merchant_detail?.business_name ??
-            transaction.merchant_name ??
-            transaction.display_name}
-        </DetailField>
-        {transaction.merchant_detail?.business_name &&
-        transaction.merchant_name &&
-        transaction.merchant_detail.business_name !== transaction.merchant_name ? (
-          <DetailField label={t('columns.description')}>{transaction.merchant_name}</DetailField>
-        ) : null}
-        <DetailField label={t('columns.description')}>
-          {transaction.display_description ?? transaction.description ?? '—'}
-        </DetailField>
-        {transaction.credit_card?.payee_mcc != null || transaction.credit_card?.payee_mcc_name ? (
-          <DetailField label={t('columns.mcc')}>
-            {transaction.credit_card.payee_mcc_name ?? '—'}
-            {transaction.credit_card.payee_mcc != null ? (
-              <span className="text-muted-foreground"> ({transaction.credit_card.payee_mcc})</span>
-            ) : null}
-          </DetailField>
-        ) : null}
-        {transaction.credit_card?.purchase_date ? (
-          <DetailField label={t('columns.purchaseDate')}>
-            <FormattedDate value={transaction.credit_card.purchase_date.slice(0, 10)} />
-          </DetailField>
-        ) : null}
-        {paymentDocuments.receiverName &&
-        !paymentDocuments.receiver &&
-        paymentDocuments.receiverName !== transaction.merchant_name ? (
-          <DetailField label={t('transactionDetail.receiverName')}>
-            {paymentDocuments.receiverName}
-          </DetailField>
-        ) : null}
-        <PaymentDocumentFields
-          payer={paymentDocuments.payer}
-          receiver={paymentDocuments.receiver}
-        />
-      </section>
-
-      {assistReasoning ? (
+      <TransactionDetailFields transaction={transaction} />
+      {props.assistReasoning ? (
         <p className="rounded bg-muted/40 px-3 py-2 text-sm text-muted-foreground">
-          {assistReasoning}
+          {props.assistReasoning}
         </p>
       ) : null}
-
       <ForeignCurrencyDetails transaction={transaction} />
-
       <CreditCardBillSection
         transaction={transaction}
-        active={active}
-        onBillLinkSaved={onBillLinkSaved}
+        active={props.active}
+        onBillLinkSaved={props.onBillLinkSaved}
       />
-
-      {transaction.installment_number !== null &&
-        transaction.total_installments !== null &&
-        transaction.total_installments > 1 &&
-        transaction.installment_number > 1 && (
-          <InstallmentPlanSummary
-            transactionId={transaction.id}
-            installmentNumber={transaction.installment_number}
-            totalInstallments={transaction.total_installments}
-            amountInAccountCurrencyCents={transaction.amount_in_account_currency_cents}
-            accountCurrency={transaction.account_currency}
-            purchaseDate={transaction.credit_card?.purchase_date}
-            purchaseTotalCents={transaction.credit_card?.purchase_total_cents}
-            onOpenTransaction={onOpenTransaction}
-            enabled={active}
-            locale={locale}
-          />
-        )}
-
-      {!transaction.deleted_at ? (
-        <>
-          <TransactionClassificationForm
-            transaction={transaction}
-            categoryOverrideId={categoryOverrideId}
-            onCategoryOverrideIdChange={onCategoryOverrideIdChange}
-            annotationCategoryId={annotationCategoryId}
-            onAnnotationCategoryIdChange={onAnnotationCategoryIdChange}
-            annotationSubCategoryId={annotationSubCategoryId}
-            onAnnotationSubCategoryIdChange={onAnnotationSubCategoryIdChange}
-            selectedLabelIds={selectedLabelIds}
-            onSelectedLabelIdsChange={onSelectedLabelIdsChange}
-            notes={notes}
-            onNotesChange={onNotesChange}
-            enabled={active}
-          />
-
-          <PendingTransferSection
-            transactionId={transaction.id}
-            linked={Boolean(transaction.transfer_group)}
-          />
-        </>
-      ) : null}
-
+      <InstallmentPlanSection
+        transaction={transaction}
+        active={props.active}
+        locale={props.locale}
+        onOpenTransaction={props.onOpenTransaction}
+      />
+      <EditableTransactionDetails {...props} />
       <LinkedTransferSection
         transaction={transaction}
-        onUnlinkTransfer={onUnlinkTransfer}
-        unlinkPending={unlinkPending}
+        onUnlinkTransfer={props.onUnlinkTransfer}
+        unlinkPending={props.unlinkPending}
       />
-
       <details className="rounded-md border border-border p-3">
         <summary className="cursor-pointer font-medium">{t('classify.rawJson')}</summary>
         <pre className="mt-2 max-h-64 overflow-auto rounded bg-muted p-2 text-xs">

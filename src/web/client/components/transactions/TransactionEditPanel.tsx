@@ -107,6 +107,152 @@ function useTransactionEditExtraState(transactionId: string | undefined) {
   };
 }
 
+function TransactionEditPanelContent({
+  transaction,
+  mode,
+  active,
+  showHeader,
+  titleMeta,
+  locale,
+  assistReasoning,
+  categoryOverrideId,
+  setCategoryOverrideId,
+  annotationCategoryId,
+  setAnnotationCategoryId,
+  annotationSubCategoryId,
+  setAnnotationSubCategoryId,
+  selectedLabelIds,
+  setSelectedLabelIds,
+  notes,
+  setNotes,
+  onSaved,
+  onOpenTransaction,
+  unlinkMutation,
+  applyToInstallmentSiblings,
+  setApplyToInstallmentSiblings,
+  otherSelectedTransactionIds,
+  applyToSelectedTransactions,
+  setApplyToSelectedTransactions,
+  assistMutation,
+  assistLoadedFromCache,
+  savePending,
+  saveMutation,
+  onDismiss,
+  onTriageSave,
+  onDelete,
+  onRestore,
+  dialogAction,
+  deleteMutation,
+  restoreMutation,
+  setDialogAction,
+  busy,
+  editable,
+}: {
+  readonly transaction: TransactionDetailRow;
+  readonly mode: TransactionEditPanelProps['mode'];
+  readonly active: boolean;
+  readonly showHeader: boolean;
+  readonly titleMeta: TransactionEditPanelProps['titleMeta'];
+  readonly locale: string;
+  readonly assistReasoning: string | null;
+  readonly categoryOverrideId: string;
+  readonly setCategoryOverrideId: (value: string) => void;
+  readonly annotationCategoryId: string;
+  readonly setAnnotationCategoryId: (value: string) => void;
+  readonly annotationSubCategoryId: string;
+  readonly setAnnotationSubCategoryId: (value: string) => void;
+  readonly selectedLabelIds: readonly string[];
+  readonly setSelectedLabelIds: (value: readonly string[]) => void;
+  readonly notes: string;
+  readonly setNotes: (value: string) => void;
+  readonly onSaved: () => void | Promise<void>;
+  readonly onOpenTransaction: TransactionEditPanelProps['onOpenTransaction'];
+  readonly unlinkMutation: { readonly isPending: boolean; mutate: (groupId: string) => void };
+  readonly applyToInstallmentSiblings: boolean;
+  readonly setApplyToInstallmentSiblings: (value: boolean) => void;
+  readonly otherSelectedTransactionIds: readonly string[];
+  readonly applyToSelectedTransactions: boolean;
+  readonly setApplyToSelectedTransactions: (value: boolean) => void;
+  readonly assistMutation: { readonly isPending: boolean; mutate: (force: boolean) => void };
+  readonly assistLoadedFromCache: boolean;
+  readonly savePending: boolean;
+  readonly saveMutation: { readonly isPending: boolean; mutate: () => void };
+  readonly onDismiss: TransactionEditPanelProps['onDismiss'];
+  readonly onTriageSave: () => void;
+  readonly onDelete: (() => void) | undefined;
+  readonly onRestore: (() => void) | undefined;
+  readonly dialogAction: DialogAction | null;
+  readonly deleteMutation: { readonly isPending: boolean; mutate: (reason: string) => void };
+  readonly restoreMutation: { readonly isPending: boolean; mutate: () => void };
+  readonly setDialogAction: (action: DialogAction | null) => void;
+  readonly busy: boolean;
+  readonly editable: boolean;
+}) {
+  const isDetailMode = mode === 'detail';
+
+  return (
+    <article className="flex min-w-0 flex-col gap-4">
+      {showHeader ? (
+        <header className="border-b border-border pb-3">
+          <TransactionEditTitle transaction={transaction} meta={titleMeta} />
+        </header>
+      ) : null}
+      <TransactionDetailContent
+        transaction={transaction}
+        active={active}
+        locale={locale}
+        assistReasoning={assistReasoning}
+        categoryOverrideId={categoryOverrideId}
+        onCategoryOverrideIdChange={setCategoryOverrideId}
+        annotationCategoryId={annotationCategoryId}
+        onAnnotationCategoryIdChange={setAnnotationCategoryId}
+        annotationSubCategoryId={annotationSubCategoryId}
+        onAnnotationSubCategoryIdChange={setAnnotationSubCategoryId}
+        selectedLabelIds={selectedLabelIds}
+        onSelectedLabelIdsChange={setSelectedLabelIds}
+        notes={notes}
+        onNotesChange={setNotes}
+        onBillLinkSaved={onSaved}
+        onOpenTransaction={onOpenTransaction}
+        onUnlinkTransfer={(groupId) => unlinkMutation.mutate(groupId)}
+        unlinkPending={unlinkMutation.isPending}
+      />
+      <TransactionEditFooter
+        mode={mode}
+        editable={editable}
+        busy={busy}
+        totalInstallments={transaction.total_installments ?? 0}
+        applyToInstallmentSiblings={applyToInstallmentSiblings}
+        onApplyToInstallmentSiblingsChange={setApplyToInstallmentSiblings}
+        otherSelectedTransactionCount={otherSelectedTransactionIds.length}
+        applyToSelectedTransactions={applyToSelectedTransactions}
+        onApplyToSelectedTransactionsChange={setApplyToSelectedTransactions}
+        assistPending={assistMutation.isPending}
+        assistLoadedFromCache={assistLoadedFromCache}
+        savePending={savePending || saveMutation.isPending}
+        onDismiss={onDismiss}
+        onAssist={() => assistMutation.mutate(false)}
+        onRecreateAssist={() => assistMutation.mutate(true)}
+        onSave={isDetailMode ? () => saveMutation.mutate() : onTriageSave}
+        onDelete={onDelete}
+        onRestore={onRestore}
+      />
+      <TransactionDeletionDialogs
+        action={dialogAction}
+        detail={isDetailMode}
+        deletedTransactionCount={
+          1 + (applyToSelectedTransactions ? otherSelectedTransactionIds.length : 0)
+        }
+        deletePending={deleteMutation.isPending}
+        restorePending={restoreMutation.isPending}
+        onClose={() => setDialogAction(null)}
+        onDelete={(reason) => deleteMutation.mutate(reason)}
+        onRestore={() => restoreMutation.mutate()}
+      />
+    </article>
+  );
+}
+
 export function TransactionEditPanel({
   transaction,
   mode,
@@ -320,67 +466,47 @@ export function TransactionEditPanel({
   };
 
   return (
-    <article className="flex min-w-0 flex-col gap-4">
-      {showHeader ? (
-        <header className="border-b border-border pb-3">
-          <TransactionEditTitle transaction={transaction} meta={titleMeta} />
-        </header>
-      ) : null}
-
-      <TransactionDetailContent
-        transaction={transaction}
-        active={active}
-        locale={i18n.language}
-        assistReasoning={assistReasoning}
-        categoryOverrideId={categoryOverrideId}
-        onCategoryOverrideIdChange={setCategoryOverrideId}
-        annotationCategoryId={annotationCategoryId}
-        onAnnotationCategoryIdChange={setAnnotationCategoryId}
-        annotationSubCategoryId={annotationSubCategoryId}
-        onAnnotationSubCategoryIdChange={setAnnotationSubCategoryId}
-        selectedLabelIds={selectedLabelIds}
-        onSelectedLabelIdsChange={setSelectedLabelIds}
-        notes={notes}
-        onNotesChange={setNotes}
-        onBillLinkSaved={onSaved}
-        onOpenTransaction={onOpenTransaction}
-        onUnlinkTransfer={(groupId) => unlinkMutation.mutate(groupId)}
-        unlinkPending={unlinkMutation.isPending}
-      />
-
-      <TransactionEditFooter
-        mode={mode}
-        editable={editable}
-        busy={busy}
-        totalInstallments={transaction.total_installments ?? 0}
-        applyToInstallmentSiblings={applyToInstallmentSiblings}
-        onApplyToInstallmentSiblingsChange={setApplyToInstallmentSiblings}
-        otherSelectedTransactionCount={otherSelectedTransactionIds.length}
-        applyToSelectedTransactions={applyToSelectedTransactions}
-        onApplyToSelectedTransactionsChange={setApplyToSelectedTransactions}
-        assistPending={assistMutation.isPending}
-        assistLoadedFromCache={assistLoadedFromCache}
-        savePending={savePending || saveMutation.isPending}
-        onDismiss={onDismiss}
-        onAssist={() => assistMutation.mutate(false)}
-        onRecreateAssist={() => assistMutation.mutate(true)}
-        onSave={isDetailMode ? () => saveMutation.mutate() : handleTriageSave}
-        onDelete={isDetailMode && editable ? () => setDialogAction('delete') : undefined}
-        onRestore={isDetailMode && !editable ? () => setDialogAction('restore') : undefined}
-      />
-      <TransactionDeletionDialogs
-        action={dialogAction}
-        detail={isDetailMode}
-        deletedTransactionCount={
-          1 + (applyToSelectedTransactions ? otherSelectedTransactionIds.length : 0)
-        }
-        deletePending={deleteMutation.isPending}
-        restorePending={restoreMutation.isPending}
-        onClose={() => setDialogAction(null)}
-        onDelete={(reason) => deleteMutation.mutate(reason)}
-        onRestore={() => restoreMutation.mutate()}
-      />
-    </article>
+    <TransactionEditPanelContent
+      transaction={transaction}
+      mode={mode}
+      active={active}
+      showHeader={showHeader}
+      titleMeta={titleMeta}
+      locale={i18n.language}
+      assistReasoning={assistReasoning}
+      categoryOverrideId={categoryOverrideId}
+      setCategoryOverrideId={setCategoryOverrideId}
+      annotationCategoryId={annotationCategoryId}
+      setAnnotationCategoryId={setAnnotationCategoryId}
+      annotationSubCategoryId={annotationSubCategoryId}
+      setAnnotationSubCategoryId={setAnnotationSubCategoryId}
+      selectedLabelIds={selectedLabelIds}
+      setSelectedLabelIds={setSelectedLabelIds}
+      notes={notes}
+      setNotes={setNotes}
+      onSaved={onSaved}
+      onOpenTransaction={onOpenTransaction}
+      unlinkMutation={unlinkMutation}
+      applyToInstallmentSiblings={applyToInstallmentSiblings}
+      setApplyToInstallmentSiblings={setApplyToInstallmentSiblings}
+      otherSelectedTransactionIds={otherSelectedTransactionIds}
+      applyToSelectedTransactions={applyToSelectedTransactions}
+      setApplyToSelectedTransactions={setApplyToSelectedTransactions}
+      assistMutation={assistMutation}
+      assistLoadedFromCache={assistLoadedFromCache}
+      savePending={savePending}
+      saveMutation={saveMutation}
+      onDismiss={onDismiss}
+      onTriageSave={handleTriageSave}
+      onDelete={isDetailMode && editable ? () => setDialogAction('delete') : undefined}
+      onRestore={isDetailMode && !editable ? () => setDialogAction('restore') : undefined}
+      dialogAction={dialogAction}
+      deleteMutation={deleteMutation}
+      restoreMutation={restoreMutation}
+      setDialogAction={setDialogAction}
+      busy={busy}
+      editable={editable}
+    />
   );
 }
 

@@ -39,21 +39,24 @@ type TransactionFiltersPanelProps = {
   readonly searchInputRef?: RefObject<HTMLInputElement | null>;
 };
 
-export function TransactionFiltersPanel({
+function TransactionScopeFilters({
   filters,
   accounts,
   bills,
   showCreditCardFilters,
-  categoryById,
-  labelById,
-  onChange,
+  selectedAccountIds,
+  accountFilterItems,
   onFiltersChange,
-  searchInputRef,
-}: TransactionFiltersPanelProps) {
+}: Pick<
+  TransactionFiltersPanelProps,
+  'filters' | 'accounts' | 'bills' | 'showCreditCardFilters' | 'onFiltersChange'
+> & {
+  readonly selectedAccountIds: readonly string[];
+  readonly accountFilterItems: ReturnType<typeof buildAccountFilterItems>;
+}) {
   const { t, i18n } = useTranslation();
   const [rangeDialogOpen, setRangeDialogOpen] = useState(false);
   const [pendingCustomSelect, setPendingCustomSelect] = useState(false);
-
   const customActive = isCustomDateActive(filters);
   const dateShortcut = resolveTransactionDateSelectValue(filters, pendingCustomSelect);
   const timeZone = useMemo(() => resolveBrowserTimeZone(), []);
@@ -64,35 +67,12 @@ export function TransactionFiltersPanel({
   const dateNavTooltipKey = dateNavigationSpec
     ? resolveTransactionDateNavigationTooltipKey(dateNavigationSpec)
     : null;
-
-  const selectedAccountIds = parseCsvFilterValue(filters['a']);
-  const selectedLabelIds = parseCsvFilterValue(filters['label-id']);
-  const selectedCategoryIds = parseCsvFilterValue(filters['category-id']).filter(
-    (id) => !id.startsWith('only:'),
-  );
-  const accountFilterItems = useMemo(() => buildAccountFilterItems(accounts), [accounts]);
-  const labelFilterItems = useMemo(() => buildLabelFilterItems(labelById), [labelById]);
-  const categoryFilterItems = useMemo(() => buildCategoryFilterItems(categoryById), [categoryById]);
-
-  const openRangeDialog = (): void => {
-    setRangeDialogOpen(true);
-  };
+  const fieldClass = 'flex flex-col gap-1 text-xs';
 
   const closeRangeDialog = (): void => {
     setRangeDialogOpen(false);
     setPendingCustomSelect(false);
   };
-
-  const applyCustomRange = (start: string, end: string): void => {
-    onFiltersChange({
-      d: 'custom',
-      'start-date': start,
-      'end-date': end,
-    });
-    closeRangeDialog();
-  };
-
-  const fieldClass = 'flex flex-col gap-1 text-xs';
 
   return (
     <>
@@ -106,9 +86,7 @@ export function TransactionFiltersPanel({
             value={selectedAccountIds}
             items={accountFilterItems}
             onChange={(value) =>
-              onFiltersChange({
-                a: value.length > 0 ? value.join(',') : undefined,
-              })
+              onFiltersChange({ a: value.length > 0 ? value.join(',') : undefined })
             }
           />
           {showCreditCardFilters ? (
@@ -129,9 +107,7 @@ export function TransactionFiltersPanel({
                   label={t(dateNavTooltipKey)}
                   onClick={() => {
                     const patch = shiftTransactionDateFiltersBack(filters, timeZone);
-                    if (patch) {
-                      onFiltersChange(patch);
-                    }
+                    if (patch) onFiltersChange(patch);
                   }}
                 >
                   <MdChevronLeft className="size-4" />
@@ -141,27 +117,23 @@ export function TransactionFiltersPanel({
                 className="min-w-0 flex-1 rounded border border-input bg-background px-2 py-1 text-sm"
                 aria-label={t('columns.date')}
                 value={dateShortcut}
-                onChange={(e) => {
-                  const value = e.target.value;
+                onChange={(event) => {
+                  const value = event.target.value;
                   if (value === 'custom') {
                     setPendingCustomSelect(true);
-                    openRangeDialog();
+                    setRangeDialogOpen(true);
                     return;
                   }
                   setPendingCustomSelect(false);
-                  if (value === TRANSACTION_DATE_ALL) {
-                    onFiltersChange({
-                      d: TRANSACTION_DATE_ALL,
-                      'start-date': undefined,
-                      'end-date': undefined,
-                    });
-                    return;
-                  }
-                  onFiltersChange({
-                    d: value || DEFAULT_TRANSACTION_DATE_PRESET,
-                    'start-date': undefined,
-                    'end-date': undefined,
-                  });
+                  onFiltersChange(
+                    value === TRANSACTION_DATE_ALL
+                      ? { d: TRANSACTION_DATE_ALL, 'start-date': undefined, 'end-date': undefined }
+                      : {
+                          d: value || DEFAULT_TRANSACTION_DATE_PRESET,
+                          'start-date': undefined,
+                          'end-date': undefined,
+                        },
+                  );
                 }}
               >
                 <option value={TRANSACTION_DATE_ALL}>{t('filters.allDates')}</option>
@@ -180,7 +152,7 @@ export function TransactionFiltersPanel({
                 type="button"
                 className="mt-1 max-w-full truncate rounded border border-input bg-background px-2 py-1 text-left text-sm hover:bg-accent"
                 title={t('dateRange.edit')}
-                onClick={openRangeDialog}
+                onClick={() => setRangeDialogOpen(true)}
               >
                 {formatDateTimeLocalRange(
                   String(filters['start-date']),
@@ -192,6 +164,57 @@ export function TransactionFiltersPanel({
           </div>
         </div>
       </SidebarSection>
+      {rangeDialogOpen && (
+        <CustomDateRangeDialog
+          open
+          initialStart={String(filters['start-date'] ?? '')}
+          initialEnd={String(filters['end-date'] ?? '')}
+          onClose={closeRangeDialog}
+          onApply={(start, end) => {
+            onFiltersChange({ d: 'custom', 'start-date': start, 'end-date': end });
+            closeRangeDialog();
+          }}
+        />
+      )}
+    </>
+  );
+}
+
+export function TransactionFiltersPanel({
+  filters,
+  accounts,
+  bills,
+  showCreditCardFilters,
+  categoryById,
+  labelById,
+  onChange,
+  onFiltersChange,
+  searchInputRef,
+}: TransactionFiltersPanelProps) {
+  const { t } = useTranslation();
+
+  const selectedAccountIds = parseCsvFilterValue(filters['a']);
+  const selectedLabelIds = parseCsvFilterValue(filters['label-id']);
+  const selectedCategoryIds = parseCsvFilterValue(filters['category-id']).filter(
+    (id) => !id.startsWith('only:'),
+  );
+  const accountFilterItems = useMemo(() => buildAccountFilterItems(accounts), [accounts]);
+  const labelFilterItems = useMemo(() => buildLabelFilterItems(labelById), [labelById]);
+  const categoryFilterItems = useMemo(() => buildCategoryFilterItems(categoryById), [categoryById]);
+
+  const fieldClass = 'flex flex-col gap-1 text-xs';
+
+  return (
+    <>
+      <TransactionScopeFilters
+        filters={filters}
+        accounts={accounts}
+        bills={bills}
+        showCreditCardFilters={showCreditCardFilters}
+        selectedAccountIds={selectedAccountIds}
+        accountFilterItems={accountFilterItems}
+        onFiltersChange={onFiltersChange}
+      />
 
       <SidebarSection title={t('filters.sectionSearch')} defaultOpen>
         <div className="space-y-2">
@@ -309,16 +332,6 @@ export function TransactionFiltersPanel({
           </label>
         </div>
       </SidebarSection>
-
-      {rangeDialogOpen && (
-        <CustomDateRangeDialog
-          open
-          initialStart={String(filters['start-date'] ?? '')}
-          initialEnd={String(filters['end-date'] ?? '')}
-          onClose={closeRangeDialog}
-          onApply={applyCustomRange}
-        />
-      )}
     </>
   );
 }

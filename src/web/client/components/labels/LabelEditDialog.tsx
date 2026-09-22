@@ -249,6 +249,139 @@ function useLabelEditFormState(
   return { name, setName, parentId, setParentId, icon, setIcon, color, setColor };
 }
 
+function LabelEditDialogContent({
+  label,
+  mode,
+  onClose,
+  name,
+  parentId,
+  icon,
+  color,
+  parentOptions,
+  deleteBlocked,
+  inheritsPresentation,
+  dialogTitle,
+  savePending,
+  deletePending,
+  onParentChange,
+  onNameChange,
+  onColorChange,
+  onIconChange,
+  onSave,
+  onDelete,
+}: {
+  readonly label: LabelRecord | null;
+  readonly mode: 'create' | 'edit';
+  readonly onClose: () => void;
+  readonly name: string;
+  readonly parentId: string;
+  readonly icon: string;
+  readonly color: string;
+  readonly parentOptions: ReturnType<typeof buildAnnotationLabelOptions>;
+  readonly deleteBlocked: boolean;
+  readonly inheritsPresentation: boolean;
+  readonly dialogTitle: string;
+  readonly savePending: boolean;
+  readonly deletePending: boolean;
+  readonly onParentChange: (value: string) => void;
+  readonly onNameChange: (value: string) => void;
+  readonly onColorChange: (value: string) => void;
+  readonly onIconChange: (value: string) => void;
+  readonly onSave: () => void;
+  readonly onDelete: () => void;
+}) {
+  const { t } = useTranslation();
+  const open = mode === 'create' || label !== null;
+
+  return (
+    <Dialog
+      open={open}
+      title={dialogTitle}
+      onClose={onClose}
+      footer={
+        <>
+          {mode === 'edit' && label && (
+            <button
+              type="button"
+              className="mr-auto rounded border border-destructive px-3 py-1 text-sm text-destructive disabled:opacity-50"
+              disabled={deletePending || deleteBlocked}
+              title={deleteBlocked ? t('labels.deleteBlocked') : undefined}
+              onClick={onDelete}
+            >
+              {t('labels.delete')}
+            </button>
+          )}
+          <button type="button" className="rounded border px-3 py-1 text-sm" onClick={onClose}>
+            {t('classify.skip')}
+          </button>
+          <button
+            type="button"
+            className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground disabled:opacity-50"
+            disabled={!name.trim() || savePending}
+            onClick={onSave}
+          >
+            {t('classify.save')}
+          </button>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {mode === 'edit' && label && deleteBlocked && (
+          <p className="text-sm text-muted-foreground">{t('labels.deleteBlocked')}</p>
+        )}
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">{t('dialog.displayName')}</span>
+          <input
+            className="w-full rounded border border-input px-2 py-1 text-sm"
+            value={name}
+            onChange={(event) => onNameChange(event.target.value)}
+          />
+        </label>
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">{t('labels.parent')}</span>
+          <select
+            className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
+            value={parentId}
+            onChange={(event) => onParentChange(event.target.value)}
+          >
+            <option value="">{t('labels.noParent')}</option>
+            {parentOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </label>
+        {inheritsPresentation && (
+          <p className="text-xs text-muted-foreground">{t('labels.inheritsPresentation')}</p>
+        )}
+        <label className="block space-y-1">
+          <span className="text-sm font-medium">{t('dialog.color')}</span>
+          <div className="flex items-center gap-2">
+            <input
+              type="color"
+              className="h-9 w-14 cursor-pointer rounded border border-input"
+              value={color}
+              onChange={(event) => onColorChange(event.target.value)}
+            />
+            <span className="font-mono text-xs text-muted-foreground">{color}</span>
+            <span
+              className="inline-flex items-center rounded p-1"
+              style={{ backgroundColor: `${color}22`, color }}
+            >
+              <MaterialIcon name={icon} className="size-5" />
+            </span>
+          </div>
+        </label>
+        <div className="space-y-1">
+          <span className="text-sm font-medium">{t('dialog.icon')}</span>
+          <IconPicker value={icon} onChange={onIconChange} />
+        </div>
+      </div>
+    </Dialog>
+  );
+}
+
 export function LabelEditDialog({
   label,
   mode,
@@ -329,7 +462,6 @@ export function LabelEditDialog({
     },
   });
 
-  const open = mode === 'create' || label !== null;
   const inUse = (label?.usageCount ?? 0) > 0;
   const hasChildren =
     label !== null && Object.values(byId).some((row) => row.parent_id === label.id);
@@ -342,90 +474,26 @@ export function LabelEditDialog({
   const dialogTitle = resolveLabelDialogTitle(mode, initialParentId, t);
 
   return (
-    <Dialog
-      open={open}
-      title={dialogTitle}
+    <LabelEditDialogContent
+      label={label}
+      mode={mode}
       onClose={onClose}
-      footer={
-        <>
-          {mode === 'edit' && label && (
-            <button
-              type="button"
-              className="mr-auto rounded border border-destructive px-3 py-1 text-sm text-destructive disabled:opacity-50"
-              disabled={deleteMutation.isPending || deleteBlocked}
-              title={deleteBlocked ? t('labels.deleteBlocked') : undefined}
-              onClick={() => deleteMutation.mutate()}
-            >
-              {t('labels.delete')}
-            </button>
-          )}
-          <button type="button" className="rounded border px-3 py-1 text-sm" onClick={onClose}>
-            {t('classify.skip')}
-          </button>
-          <button
-            type="button"
-            className="rounded bg-primary px-3 py-1 text-sm text-primary-foreground disabled:opacity-50"
-            disabled={!name.trim() || saveMutation.isPending}
-            onClick={() => saveMutation.mutate()}
-          >
-            {t('classify.save')}
-          </button>
-        </>
-      }
-    >
-      <div className="space-y-4">
-        {mode === 'edit' && label && deleteBlocked && (
-          <p className="text-sm text-muted-foreground">{t('labels.deleteBlocked')}</p>
-        )}
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">{t('dialog.displayName')}</span>
-          <input
-            className="w-full rounded border border-input px-2 py-1 text-sm"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-          />
-        </label>
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">{t('labels.parent')}</span>
-          <select
-            className="w-full rounded border border-input bg-background px-2 py-1 text-sm"
-            value={parentId}
-            onChange={(e) => handleParentChange(e.target.value)}
-          >
-            <option value="">{t('labels.noParent')}</option>
-            {parentOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
-        </label>
-        {inheritsPresentation && (
-          <p className="text-xs text-muted-foreground">{t('labels.inheritsPresentation')}</p>
-        )}
-        <label className="block space-y-1">
-          <span className="text-sm font-medium">{t('dialog.color')}</span>
-          <div className="flex items-center gap-2">
-            <input
-              type="color"
-              className="h-9 w-14 cursor-pointer rounded border border-input"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-            />
-            <span className="font-mono text-xs text-muted-foreground">{color}</span>
-            <span
-              className="inline-flex items-center rounded p-1"
-              style={{ backgroundColor: `${color}22`, color }}
-            >
-              <MaterialIcon name={icon} className="size-5" />
-            </span>
-          </div>
-        </label>
-        <div className="space-y-1">
-          <span className="text-sm font-medium">{t('dialog.icon')}</span>
-          <IconPicker value={icon} onChange={setIcon} />
-        </div>
-      </div>
-    </Dialog>
+      name={name}
+      parentId={parentId}
+      icon={icon}
+      color={color}
+      parentOptions={parentOptions}
+      deleteBlocked={deleteBlocked}
+      inheritsPresentation={inheritsPresentation}
+      dialogTitle={dialogTitle}
+      savePending={saveMutation.isPending}
+      deletePending={deleteMutation.isPending}
+      onParentChange={handleParentChange}
+      onNameChange={setName}
+      onColorChange={setColor}
+      onIconChange={setIcon}
+      onSave={() => saveMutation.mutate()}
+      onDelete={() => deleteMutation.mutate()}
+    />
   );
 }

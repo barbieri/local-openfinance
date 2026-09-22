@@ -264,6 +264,55 @@ function buildChartsCollapsedSummary(input: {
   return `: ${tabLabel} · ${countLabel}`;
 }
 
+function TransactionChartsContent({
+  activeTab,
+  shouldFetch,
+  isLoading,
+  isError,
+  data,
+  categoryById,
+  labelById,
+  ignoresNonScopeFilters,
+}: {
+  readonly activeTab: TransactionChartTab | undefined;
+  readonly shouldFetch: boolean;
+  readonly isLoading: boolean;
+  readonly isError: boolean;
+  readonly data: TransactionChartSection | undefined;
+  readonly categoryById: Record<string, Record<string, unknown>>;
+  readonly labelById: Record<string, LabelRecord>;
+  readonly ignoresNonScopeFilters: boolean;
+}) {
+  const { t } = useTranslation();
+
+  return (
+    <>
+      {!activeTab && <p className="text-sm text-muted-foreground">{t('charts.selectTabHint')}</p>}
+
+      {shouldFetch && isLoading && (
+        <p className="text-sm text-muted-foreground">{t('charts.loading')}</p>
+      )}
+
+      {shouldFetch && isError && (
+        <p className="text-sm text-destructive">{t('charts.loadError')}</p>
+      )}
+
+      {shouldFetch && data && data.total === 0 && activeTab !== 'balance' && (
+        <p className="text-sm text-muted-foreground">{t('charts.noData')}</p>
+      )}
+
+      {shouldFetch && data && (data.total > 0 || data.chart === 'balance') && (
+        <ChartPanel
+          data={data}
+          categoryById={categoryById}
+          labelById={labelById}
+          ignoresNonScopeFilters={ignoresNonScopeFilters}
+        />
+      )}
+    </>
+  );
+}
+
 export function TransactionCharts({
   chartQueryString,
   chartState,
@@ -355,28 +404,16 @@ export function TransactionCharts({
           ))}
         </div>
 
-        {!activeTab && <p className="text-sm text-muted-foreground">{t('charts.selectTabHint')}</p>}
-
-        {shouldFetch && isLoading && (
-          <p className="text-sm text-muted-foreground">{t('charts.loading')}</p>
-        )}
-
-        {shouldFetch && isError && (
-          <p className="text-sm text-destructive">{t('charts.loadError')}</p>
-        )}
-
-        {shouldFetch && data && data.total === 0 && activeTab !== 'balance' && (
-          <p className="text-sm text-muted-foreground">{t('charts.noData')}</p>
-        )}
-
-        {shouldFetch && data && (data.total > 0 || data.chart === 'balance') && (
-          <ChartPanel
-            data={data}
-            categoryById={categoryById}
-            labelById={labelById}
-            ignoresNonScopeFilters={ignoresNonScopeFilters}
-          />
-        )}
+        <TransactionChartsContent
+          activeTab={activeTab}
+          shouldFetch={shouldFetch}
+          isLoading={isLoading}
+          isError={isError}
+          data={data}
+          categoryById={categoryById}
+          labelById={labelById}
+          ignoresNonScopeFilters={ignoresNonScopeFilters}
+        />
       </DisclosureContent>
     </Disclosure>
   );
