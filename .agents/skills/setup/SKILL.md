@@ -44,7 +44,8 @@ Ask for anything still missing:
 
 Work from the git clone. `CLONE` is that directory.
 
-1. `nvm use` (Node 26+, `.nvmrc`). `corepack enable` if `pnpm` is missing.
+1. `nvm install` (Node 26+, `.nvmrc`). Install the pinned pnpm with
+   `npm install --global "$(node -p "require('./package.json').packageManager")"`.
 2. `pnpm install` then `pnpm run build` (needs `dist/bundle` and `dist/client`).
 3. `cp .env.example .env` and fill:
    - `OPENFINANCE_API_KEY`

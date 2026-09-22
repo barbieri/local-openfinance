@@ -70,7 +70,8 @@ ends with the web UI kept running and a daily backup+sync.
 Manual first run:
 
 ```bash
-nvm use                 # Node 26+, see .nvmrc
+nvm install             # Install and select the version in .nvmrc
+npm install --global "$(node -p "require('./package.json').packageManager")"
 pnpm install
 cp .env.example .env
 # set OPENFINANCE_API_KEY, a model key, TZ, LOG_LEVEL=warn

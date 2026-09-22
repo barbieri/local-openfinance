@@ -114,7 +114,10 @@ local-openfinance/
 - SQLite uses `import { DatabaseSync } from 'node:sqlite'`; do not add
   `better-sqlite3` or another DB npm dependency.
 - TypeScript extends `@tsconfig/strictest` with `"types": ["node"]`.
-- pnpm v11 is the package manager. `packageManager` pins the Corepack version.
+- pnpm v12 is the package manager. `packageManager` pins the pnpm version.
+- Install that pinned pnpm version before running commands. `pnpm-workspace.yaml`
+  sets `pmOnFail: ignore` so pnpm does not prepend a package-manager document
+  to `pnpm-lock.yaml` during ordinary commands.
 - `pnpm-workspace.yaml` allows the `esbuild` postinstall needed by the CLI
   bundle step.
 - Biome handles formatting and linting. TypeScript and JavaScript use single
