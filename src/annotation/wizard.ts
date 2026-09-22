@@ -132,6 +132,7 @@ async function promptCategorySelection(
     ),
   ];
 
+  const defaultCategoryId = suggestedCategoryIds[0];
   const categoryId = await select({
     message: 'Category',
     choices: [
@@ -142,7 +143,7 @@ async function promptCategorySelection(
       { name: 'Create new category…', value: '__new__' },
       { name: 'Skip entry', value: '__skip__' },
     ],
-    default: suggestedCategoryIds[0],
+    ...(defaultCategoryId === undefined ? {} : { default: defaultCategoryId }),
   });
 
   if (categoryId === '__new__') {
