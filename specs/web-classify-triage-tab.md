@@ -94,6 +94,8 @@ Deleted transactions are excluded from the triage queue and precompute work.
 Before precompute, sync detects internal-transfer proposals among the newly synced
 transactions and transactions from the preceding day. A proposal appears
 in the triage editor before classification.
+Confirming a proposal refreshes the transaction detail so the proposed transfer
+card changes to the linked transfer card in the current triage item.
 
 Precompute skips entries already marked applied or dismissed so triage does not
 repeat the same transaction.

@@ -645,9 +645,13 @@ function PendingTransferSection({
         method: 'POST',
         body: JSON.stringify({ pairs: [pair] }),
       }),
-    onSuccess: () => {
+    onSuccess: async () => {
       void queryClient.invalidateQueries({ queryKey: ['transactions'] });
       void queryClient.invalidateQueries({ queryKey: ['transfer-suggestion', transactionId] });
+      await queryClient.invalidateQueries({ queryKey: ['transaction-detail', transactionId] });
+    },
+    onError: (error: Error) => {
+      toast.error(t('toast.error'), { description: error.message, duration: Infinity });
     },
   });
   const suggestion = data?.suggestion;
