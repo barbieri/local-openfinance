@@ -105,7 +105,7 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@biomejs/biome": "^2.5.10",
+    "@biomejs/biome": "^2.5.14",
     "@tailwindcss/vite": "^4.3.3",
     "@tsconfig/strictest": "^2.0.8",
     "@types/marked-terminal": "^6.1.1",
