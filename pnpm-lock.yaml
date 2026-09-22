@@ -31,8 +31,8 @@ importers:
         specifier: ^4.0.110
         version: 4.0.110(react@19.3.0)(zod@4.6.5)
       '@ai-sdk/xai':
-        specifier: ^4.0.43
-        version: 4.0.43(zod@4.6.5)
+        specifier: ^5.0.4
+        version: 5.0.4(zod@4.6.5)
       '@hono/node-server':
         specifier: ^2.1.1
         version: 2.1.1(hono@4.13.8)
@@ -261,8 +261,8 @@ packages:
     peerDependencies:
       react: ^18 || ~19.0.1 || ~19.1.2 || ^19.2.1
 
-  '@ai-sdk/xai@4.0.43':
-    resolution: {integrity: sha512-RAdjEwcaVGcmYWjzPoq61Z06Yi81J+22r9Quuu6ByZ1EUNVwsD1yNNF7znSot+7L+i68PBc6T5QtbnYB4rLaVA==}
+  '@ai-sdk/xai@5.0.4':
+    resolution: {integrity: sha512-Cg3xUB0H6OA4fvcX+uamkZXuzxdjhi7HH15glxpE8boZUijFmfz3YPM3Y/HvQkuCb6D/ixCe7lpcwVjidLhw9w==}
     engines: {node: '>=22'}
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
@@ -4279,10 +4279,10 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  '@ai-sdk/xai@4.0.43(zod@4.6.5)':
+  '@ai-sdk/xai@5.0.4(zod@4.6.5)':
     dependencies:
-      '@ai-sdk/provider': 4.0.7
-      '@ai-sdk/provider-utils': 5.0.29(zod@4.6.5)
+      '@ai-sdk/provider': 4.0.17
+      '@ai-sdk/provider-utils': 5.0.45(zod@4.6.5)
       zod: 4.6.5
 
   '@apm-js-collab/code-transformer-bundler-plugins@0.7.4':
