@@ -85,6 +85,7 @@ local-openfinance/
 ├── banco-mcp-openapi.json     # Banco MCP REST contract
 ├── schemas/                   # Ajv JSON Schemas
 ├── specs/                     # Product and technical specifications
+├── skills/                    # Agent skills, installable with npx skills
 ├── examples/                  # Topic configs and prompt directories
 ├── src/
 │   ├── local-openfinance.ts   # CLI entrypoint
@@ -167,6 +168,22 @@ local-openfinance/
   and database and sending that data to the configured model provider is
   authorized and expected. This includes gitignored and `tmp/` artifacts, or
   paths explicitly supplied by the user. Do not ask separately for permission.
+
+## Read-only database analysis
+
+Agents that query the local SQLite database for analysis read
+`skills/local-openfinance-analysis/SKILL.md` first. It documents the core
+tables (transactions, annotations/labels, triage suggestions, credit
+cards, investments, loans, transfers) and the money sign, UTC timestamp,
+and soft-delete conventions, and requires read-only access to the live
+file. Schema or convention changes that affect analysis update that skill
+in the same change.
+
+The root `skills/` directory is published for other projects:
+`npx skills add <owner>/<repo>`. `skills/local-openfinance-analysis` is
+symlinked into `.agents/skills/` so in-repo agent sessions discover the
+canonical copy. Do not add locally authored skills to
+`skills-lock.json`; that lock tracks external installs only.
 
 ## Data safety
 
