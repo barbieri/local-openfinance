@@ -83,7 +83,7 @@ export function createReportMemoryRebuilder(dependencies: {
       now: input.now,
       timeZone: input.timeZone,
     });
-    const language = currentScope.report.language;
+    const language = currentScope.language;
     const memorySeed = intelligenceMemorySeed(language);
     const memoryBefore = readIntelligenceMemory(input.db, input.reportId, memorySeed);
     const earliest = readEarliestTransactionDate(input.db, input.timeZone);

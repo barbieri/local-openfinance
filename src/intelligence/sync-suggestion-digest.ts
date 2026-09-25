@@ -117,9 +117,7 @@ export function createSyncSuggestionDigest(
 export const sendAssistSuggestionDigest = createSyncSuggestionDigest({ deliverEmail });
 
 function resolveSuggestionDigestLanguage(resolved: ResolvedConfig): string {
-  return resolved.config.reports.length === 1
-    ? (resolved.config.reports[0]?.language ?? 'pt-BR')
-    : 'pt-BR';
+  return resolved.config.language;
 }
 
 function prepareSuggestionDigest(

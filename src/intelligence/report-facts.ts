@@ -83,7 +83,7 @@ function loadScopedRows(input: LoadReportFactsInput): readonly EnrichedTransacti
       offset: 0,
       sort: 'date:asc',
       timeZone: scope.timeZone,
-      locale: scope.report.language,
+      locale: scope.language,
     },
   );
   if (page.total > page.rows.length) {
@@ -111,7 +111,7 @@ function loadFactResolutionContext(
   const suggestions = loadAssistSuggestions(db, unconfirmedEntryIds(rows));
   const indexes: ReportTaxonomyIndexes = {
     categories: buildReportCategoryIndex(db, {
-      translateNames: resolveCategoryTranslationEnabled(scope.report.language),
+      translateNames: resolveCategoryTranslationEnabled(scope.language),
     }),
     labels: buildAnnotationLabelIndex(db),
   };

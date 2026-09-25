@@ -147,14 +147,20 @@ async function createClaimedReportChatResponse(
         properties: { markdown: { type: 'string', minLength: 1, maxLength: 50_000 } },
       }),
       execute: async ({ markdown }) =>
-        saveChatMemory(input.db, input.resolved, input.reportId, markdown, report.language),
+        saveChatMemory(
+          input.db,
+          input.resolved,
+          input.reportId,
+          markdown,
+          input.resolved.config.language,
+        ),
     });
   }
   const modelMessages = await convertToModelMessages(messages, { tools });
   const memory = readIntelligenceMemory(
     input.db,
     input.reportId,
-    intelligenceMemorySeed(report.language),
+    intelligenceMemorySeed(input.resolved.config.language),
   ).markdown;
   const modelConfig = input.resolved.config.chatModel ?? report.model;
   const temperature = modelSupportsTemperature(modelConfig) ? modelConfig.temperature : undefined;

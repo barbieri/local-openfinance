@@ -111,10 +111,7 @@ export function createReportAgent(dependencies: ReportAgentDependencies): Genera
       subject: reviewedOutput.subject,
       markdown: reportHtmlToText(html),
       html,
-      memoryAfter: compactReportMemoryMarkdown(
-        reviewedOutput.memoryMarkdown,
-        scope.report.language,
-      ),
+      memoryAfter: compactReportMemoryMarkdown(reviewedOutput.memoryMarkdown, scope.language),
       modelCalls,
     };
   };

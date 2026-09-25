@@ -70,13 +70,15 @@ export type ReportConfig = ReportFilters & {
   readonly schedule: ReportSchedule;
   readonly window: ReportWindow;
   readonly prompts: readonly string[];
-  readonly language?: string | undefined;
   readonly send?: 'always' | 'alerts' | 'never' | undefined;
   readonly model?: ModelConfig | undefined;
   readonly agentBudget?: Partial<ReportAgentBudget> | undefined;
 };
 
+export type GeneratedContentLanguage = 'en-US' | 'pt-BR';
+
 export type AppConfig = {
+  readonly language?: GeneratedContentLanguage | undefined;
   readonly storage?: {
     readonly databasePath?: string | undefined;
   };
@@ -122,8 +124,9 @@ export type AppConfig = {
 
 export type ResolvedAppConfig = Omit<
   AppConfig,
-  'report' | 'reports' | 'web' | 'intelligence' | 'chatModel' | 'notify'
+  'language' | 'report' | 'reports' | 'web' | 'intelligence' | 'chatModel' | 'notify'
 > & {
+  readonly language: GeneratedContentLanguage;
   readonly storage: {
     readonly databasePath: string;
   };
@@ -180,7 +183,6 @@ export type ResolvedReportConfig = {
   readonly schedule: ReportSchedule;
   readonly window: ReportWindow;
   readonly prompts: readonly string[];
-  readonly language: string;
   readonly send: 'always' | 'alerts' | 'never';
   readonly model: ModelConfig;
   readonly agentBudget: ReportAgentBudget;

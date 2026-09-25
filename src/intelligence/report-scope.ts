@@ -22,6 +22,7 @@ import {
 
 export type ReportQueryScope = {
   readonly report: ResolvedReportConfig;
+  readonly language: string;
   readonly period: LocalDatePeriod;
   readonly timeZone: string;
   readonly useCreditPurchaseDate: boolean;
@@ -59,6 +60,7 @@ export function resolveReportQueryScope(
   const today = toLocalDateKey((options.now ?? new Date()).toISOString(), timeZone);
   return {
     report,
+    language: resolved.config.language,
     period: options.period ?? resolveReportWindowPeriod(report.window, today),
     timeZone,
     useCreditPurchaseDate: resolved.config.report.useCreditPurchaseDate,

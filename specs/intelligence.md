@@ -32,7 +32,7 @@ Migration 025 and the named-report routes replace this earlier scaffold:
   `#/reports/chat`, `#/reports/chat/<id>`, `#/reports/memory`.
 - `intelligence_memory` one row (`id = 'default'`).
 - `intelligence_runs` with no report id.
-- Config: singular `report` filters and global `intelligence.*`.
+- Config: top-level generated-content `language`, singular `report` filters, and global `intelligence.*`.
 - Briefing engine: last-complete local week only.
 
 Treat that as a scaffold. Do not add more single-report APIs.
@@ -63,8 +63,6 @@ Add `reports`: an ordered array of named report objects. Required per item:
 
 Optional per report:
 
-- `language` — supported locale (`en-US` or `pt-BR`) for prose, taxonomy translations, formatting,
-  charts, and email period text. Default: `pt-BR`.
 - `send` — `always` (default for the example weekly), `alerts`, or `never`.
 - `model` — override; else topic `model`.
 - `agentBudget` — analyst steps, reviewer steps per round, and reviewer rounds.

@@ -31,13 +31,13 @@ describe('loadConfig', () => {
     expect(resolved.config.model.model).toBe('gpt-5.6-luna');
     expect(resolved.config.report.includeUnannotated).toBe(true);
     expect(resolved.config.report.useCreditPurchaseDate).toBe(false);
+    expect(resolved.config.language).toBe('pt-BR');
     expect(resolved.config.intelligence.minReportedItemAmountCents).toBe(10_000);
     expect(resolved.config.intelligence.suggestionConfidenceThreshold).toBe(0.82);
     expect(resolved.config.chatModel).toBeUndefined();
     expect(resolved.config.reports).toMatchObject([
       {
         id: 'weekly',
-        language: 'pt-BR',
         send: 'always',
       },
       {
@@ -57,6 +57,7 @@ describe('loadConfig', () => {
     expect(resolved.topicId).toBe('expenses-minimal');
     expect(resolved.config.model.model).toBe('gpt-5.6-luna');
     expect(resolved.config.storage.databasePath).toContain('tmp/openfinance.sqlite');
+    expect(resolved.config.language).toBe('pt-BR');
   });
 
   it('resolves the full and minimal expense examples to the same behavior', async () => {
@@ -105,6 +106,18 @@ describe('loadConfig', () => {
     const resolved = await loadConfig(configPath);
 
     expect(resolved.config.report.useCreditPurchaseDate).toBe(true);
+  });
+
+  it('resolves the generated-content language globally', async () => {
+    const configPath = await writeTempConfig('english-config.json', {
+      language: 'en-US',
+      report: {},
+      model: { provider: 'openai', model: 'gpt-test' },
+    });
+
+    const resolved = await loadConfig(configPath);
+
+    expect(resolved.config.language).toBe('en-US');
   });
 
   it('exposes structured validation errors for invalid configs', async () => {
@@ -193,6 +206,7 @@ describe('loadConfig', () => {
 
     const unsupportedLanguagePath = await writeTempConfig('unsupported-language-config.json', {
       ...base,
+      language: 'es-ES',
       reports: [
         {
           id: 'weekly',
@@ -200,11 +214,27 @@ describe('loadConfig', () => {
           schedule: { kind: 'manual' },
           window: { kind: 'last-complete-week' },
           prompts: ['weekly.md'],
-          language: 'es-ES',
         },
       ],
     });
     await expect(loadConfig(unsupportedLanguagePath)).rejects.toThrow('must be equal to one of');
+
+    const perReportLanguagePath = await writeTempConfig('per-report-language-config.json', {
+      ...base,
+      reports: [
+        {
+          id: 'weekly',
+          name: 'Weekly',
+          schedule: { kind: 'manual' },
+          window: { kind: 'last-complete-week' },
+          prompts: ['weekly.md'],
+          language: 'en-US',
+        },
+      ],
+    });
+    await expect(loadConfig(perReportLanguagePath)).rejects.toThrow(
+      'must NOT have additional properties',
+    );
   });
 
   it('rejects OpenAI reasoning effort on other providers', async () => {
@@ -231,14 +261,7 @@ const defaultedExampleFields: readonly {
   { path: ['sync', 'forceUpsert'], value: DEFAULT_SYNC.forceUpsert },
   { path: ['sync', 'lookbackDays'], value: DEFAULT_SYNC.lookbackDays },
   { path: ['sync', 'pageSize'], value: DEFAULT_SYNC.pageSize },
-  {
-    path: ['reports', '0', 'language'],
-    value: 'pt-BR',
-  },
-  {
-    path: ['reports', '1', 'language'],
-    value: 'pt-BR',
-  },
+  { path: ['language'], value: 'pt-BR' },
   {
     path: ['reports', '0', 'agentBudget', 'analystMaxSteps'],
     value: DEFAULT_REPORT_AGENT_BUDGET.analystMaxSteps,

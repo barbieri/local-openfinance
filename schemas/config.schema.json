@@ -6,6 +6,10 @@
   "additionalProperties": false,
   "required": ["report", "model"],
   "properties": {
+    "language": {
+      "description": "Locale used by all generated content, including reports, digest emails, charts, tables, and memory seeds. Defaults to pt-BR when omitted.",
+      "enum": ["en-US", "pt-BR"]
+    },
     "storage": {
       "description": "Filesystem location for the local Open Finance SQLite database populated by sync.",
       "type": "object",
@@ -261,10 +265,6 @@
           "type": "array",
           "minItems": 1,
           "items": { "description": "One prompt reference.", "type": "string", "minLength": 1 }
-        },
-        "language": {
-          "description": "Supported locale used for report text, translations, dates, numbers, and charts. Defaults to pt-BR when omitted.",
-          "enum": ["en-US", "pt-BR"]
         },
         "send": { "description": "Delivery policy.", "enum": ["always", "alerts", "never"] },
         "model": {

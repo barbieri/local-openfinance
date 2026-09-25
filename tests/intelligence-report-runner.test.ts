@@ -32,7 +32,6 @@ const report: ResolvedReportConfig = {
   schedule: { kind: 'weekly', weekday: 'monday', time: '08:00' },
   window: { kind: 'last-complete-week' },
   prompts: [defaultBaseInstructionsReference],
-  language: 'pt-BR',
   send: 'never',
   model: {
     provider: 'openai',
@@ -49,6 +48,7 @@ const resolved: ResolvedConfig = {
   configHash: 'hash',
   topicId: 'report-runner',
   config: {
+    language: 'pt-BR',
     storage: { databasePath: ':memory:' },
     sync: {
       forceBeforeFetch: false,

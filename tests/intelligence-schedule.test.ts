@@ -9,7 +9,6 @@ function report(id: string, schedule: ResolvedReportConfig['schedule']): Resolve
     schedule,
     window: { kind: 'last-complete-day' },
     prompts: ['prompt.md'],
-    language: 'pt-BR',
     send: 'never',
     model: { provider: 'openai', model: 'test' },
     agentBudget: { analystMaxSteps: 8, reviewerMaxSteps: 4, reviewerRounds: 2 },

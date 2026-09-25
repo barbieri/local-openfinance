@@ -115,7 +115,7 @@ export function createReportTaxonomyPolicyResolver(dependencies: {
   readonly generatePolicy: GenerateTaxonomyPolicy;
 }): (input: ResolveReportTaxonomyPolicyInput) => Promise<ReportTaxonomyPolicyResolution> {
   return async (input) => {
-    const items = collectTaxonomyItems(input.db, input.scope.report.language);
+    const items = collectTaxonomyItems(input.db, input.scope.language);
     if (items.length === 0) {
       return { policy: EMPTY_POLICY, source: 'empty', generation: { calls: 0 } };
     }
@@ -123,7 +123,7 @@ export function createReportTaxonomyPolicyResolver(dependencies: {
     const { pricing: _pricing, ...policyModel } = input.scope.report.model;
     const taxonomyHash = hashJson({
       version: TAXONOMY_POLICY_VERSION,
-      language: input.scope.report.language,
+      language: input.scope.language,
       model: policyModel,
       items,
     });
@@ -171,7 +171,7 @@ export const resolveReportTaxonomyPolicyWithUsage = createReportTaxonomyPolicyRe
         'Use uncertain instead of guessing. Read the path. Never infer meaning from an opaque id.',
         'Return exactly one decision for every input item.',
       ].join(' '),
-      prompt: JSON.stringify({ language: scope.report.language, items }),
+      prompt: JSON.stringify({ language: scope.language, items }),
       ...modelCallOptions(scope.report.model),
     });
     const usage = normalizeModelUsage(generated.usage);

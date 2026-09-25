@@ -52,7 +52,7 @@ export const DEFAULT_SMTP = {
 } as const;
 
 const RESERVED_REPORT_IDS = new Set(['chat', 'memory', 'run', 'history']);
-const DEFAULT_REPORT_LANGUAGE = 'pt-BR';
+export const DEFAULT_LANGUAGE = 'pt-BR';
 
 export class ConfigValidationError extends Error {
   readonly configPath: string;
@@ -113,6 +113,7 @@ function resolveConfigPaths(config: AppConfig, configPath: string): ResolvedAppC
   const { notify: _notify, ...configWithoutNotify } = config;
   return {
     ...configWithoutNotify,
+    language: config.language ?? DEFAULT_LANGUAGE,
     storage: {
       databasePath: config.storage?.databasePath
         ? resolveFromConfig(configPath, config.storage.databasePath)
@@ -164,7 +165,6 @@ function resolveReport(
     prompts: report.prompts.map((prompt) =>
       isDefaultPromptReference(prompt) ? prompt : resolveFromConfig(configPath, prompt),
     ),
-    language: report.language ?? DEFAULT_REPORT_LANGUAGE,
     send: report.send ?? 'always',
     model: report.model ?? config.model,
     agentBudget: {

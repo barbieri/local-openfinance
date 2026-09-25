@@ -39,7 +39,5 @@ prompt list, and optional delivery, model, or filter overrides. Singular
 `report` stays as shared entry filters. See `specs/intelligence.md`. `report.useCreditPurchaseDate` defaults to `false`; when enabled,
 credit-card purchases use their purchase date instead of `occurred_at`.
 
-Each report has a stable supported `language` (`en-US` or `pt-BR`, default `pt-BR`) which controls
-prose, translated taxonomy names, dates, numbers, charts, and email period
-formatting. `intelligence.suggestionConfidenceThreshold` defaults to `0.82`;
+Top-level `language` (`en-US` or `pt-BR`, default `pt-BR`) controls all generated content, including reports, digest emails, charts, tables, and memory seeds. `intelligence.suggestionConfidenceThreshold` defaults to `0.82`;
 only pending suggestions at or above it participate as assumed classifications.

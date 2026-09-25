@@ -22,10 +22,7 @@ derived state. Back up an existing database before applying this migration.
 
 ## Configuration
 
-Each `reports[]` item has a supported `language` locale (`en-US` or `pt-BR`). The default is `pt-BR`.
-The locale controls report prose, taxonomy translations, dates, number and
-currency formatting, chart text, and email period text. A report keeps the same
-locale between runs.
+The top-level `language` setting (`en-US` or `pt-BR`, default `pt-BR`) controls all generated content: report prose, taxonomy translations, dates, number and currency formatting, chart and table text, digest emails, and memory seeds.
 
 `intelligence.suggestionConfidenceThreshold` controls when a pending
 classification suggestion participates in analysis. The default is `0.82`.

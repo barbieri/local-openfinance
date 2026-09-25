@@ -32,7 +32,6 @@ const report: ResolvedReportConfig = {
   schedule: { kind: 'weekly', weekday: 'monday', time: '08:00' },
   window: { kind: 'last-complete-week' },
   prompts: [],
-  language: 'pt-BR',
   send: 'never',
   model: { provider: 'openai', model: 'unused-test-model' },
   agentBudget: { analystMaxSteps: 8, reviewerMaxSteps: 4, reviewerRounds: 2 },
@@ -45,6 +44,7 @@ const resolved: ResolvedConfig = {
   configHash: 'hash',
   topicId: 'memory-rebuilder',
   config: {
+    language: 'pt-BR',
     storage: { databasePath: ':memory:' },
     sync: {
       forceBeforeFetch: false,

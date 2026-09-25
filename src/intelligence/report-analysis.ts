@@ -87,7 +87,7 @@ export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): Repo
     currentFacts: currentCurrencyFacts,
     profiles,
     period: scope.period,
-    language: scope.report.language,
+    language: scope.language,
     currency,
     publicBaseUrl: resolved.config.web.publicBaseUrl,
     floorCents: resolved.config.intelligence.minReportedItemAmountCents,
@@ -110,30 +110,20 @@ export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): Repo
   });
   const analysis: ReportAnalysis = {
     period: { ...scope.period, cadence, comparisonBasis },
-    language: scope.report.language,
+    language: scope.language,
     currency,
     summary: {
-      expense: formatMoney(totals.expense, scope.report.language, currency),
-      income: formatMoney(totals.income, scope.report.language, currency),
-      refund: formatMoney(totals.refund, scope.report.language, currency),
+      expense: formatMoney(totals.expense, scope.language, currency),
+      income: formatMoney(totals.income, scope.language, currency),
+      refund: formatMoney(totals.refund, scope.language, currency),
       expenseDelta: formatSignedMoney(
         totals.expense - priorTotals.expense,
-        scope.report.language,
+        scope.language,
         currency,
       ),
-      expenseRatio: formatRatio(
-        changeRatio(totals.expense, priorTotals.expense),
-        scope.report.language,
-      ),
-      incomeDelta: formatSignedMoney(
-        totals.income - priorTotals.income,
-        scope.report.language,
-        currency,
-      ),
-      incomeRatio: formatRatio(
-        changeRatio(totals.income, priorTotals.income),
-        scope.report.language,
-      ),
+      expenseRatio: formatRatio(changeRatio(totals.expense, priorTotals.expense), scope.language),
+      incomeDelta: formatSignedMoney(totals.income - priorTotals.income, scope.language, currency),
+      incomeRatio: formatRatio(changeRatio(totals.income, priorTotals.income), scope.language),
     },
     candidates,
     profiles: relevantProfiles,

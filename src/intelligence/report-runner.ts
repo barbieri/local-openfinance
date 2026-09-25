@@ -152,7 +152,7 @@ export async function executeReport(
     return retryDueDelivery(input, scope, existingRun, deliverEmail);
   }
 
-  const memorySeed = intelligenceMemorySeed(scope.report.language);
+  const memorySeed = intelligenceMemorySeed(scope.language);
   const memoryBefore = readIntelligenceMemory(input.db, scope.report.id, memorySeed).markdown;
   const [instructions, policyResolution] = await Promise.all([
     compileReportInstructions(scope.report),
@@ -208,7 +208,7 @@ export async function executeReport(
       `${generated.html}${deterministicTable}`,
       input.resolved.config.web.publicBaseUrl,
     ),
-    scope.report.language,
+    scope.language,
   );
   const markdown = reportHtmlToText(sanitizedHtml);
   assertSemanticReportPermalinks(sanitizedHtml);
@@ -244,7 +244,7 @@ export async function executeReport(
     subject: generated.subject,
     period: scope.period,
     dateStyle: deliveryMetadata.dateStyle,
-    language: scope.report.language,
+    language: scope.language,
     html,
     text: markdown,
     charts,
@@ -698,9 +698,7 @@ function readStoredDeliveryMetadata(
   const analysis = storedField(briefing, 'analysis');
   const storedLanguage = storedField(analysis, 'language');
   const language =
-    storedLanguage === 'en-US' || storedLanguage === 'pt-BR'
-      ? storedLanguage
-      : scope.report.language;
+    storedLanguage === 'en-US' || storedLanguage === 'pt-BR' ? storedLanguage : scope.language;
   const cadence = storedField(storedField(analysis, 'period'), 'cadence');
   const delivery = storedField(briefing, 'deliveryMetadata');
   const storedName = storedField(delivery, 'reportName');

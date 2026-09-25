@@ -105,9 +105,8 @@ export function registerIntelligenceRoutes(app: Hono, ctx: WebServerContext): vo
 
   app.get('/api/intelligence/reports/:reportId/memory', (c) => {
     const reportId = requireReportId(ctx, c.req.param('reportId'));
-    const language = ctx.resolved.config.reports.find((report) => report.id === reportId)?.language;
     return c.json(
-      getIntelligenceMemory(ctx.db, reportId, intelligenceMemorySeed(language ?? 'en-US')),
+      getIntelligenceMemory(ctx.db, reportId, intelligenceMemorySeed(ctx.resolved.config.language)),
     );
   });
 

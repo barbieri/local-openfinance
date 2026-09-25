@@ -15,6 +15,7 @@ const resolved: ResolvedConfig = {
   configHash: 'digest-test-hash',
   topicId: 'digest-test',
   config: {
+    language: 'pt-BR',
     storage: { databasePath: ':memory:' },
     sync: {
       forceBeforeFetch: false,
@@ -60,6 +61,7 @@ const englishResolved: ResolvedConfig = {
   ...resolved,
   config: {
     ...resolved.config,
+    language: 'en-US',
     reports: [
       {
         id: 'weekly',
@@ -67,7 +69,6 @@ const englishResolved: ResolvedConfig = {
         schedule: { kind: 'weekly', weekday: 'monday', time: '08:00' },
         window: { kind: 'last-complete-week' },
         prompts: [],
-        language: 'en-US',
         send: 'never',
         model: { provider: 'openai', model: 'unused-test-model' },
         agentBudget: { analystMaxSteps: 8, reviewerMaxSteps: 4, reviewerRounds: 2 },
@@ -187,7 +188,7 @@ describe('sync suggestion digest', () => {
     expect(content.html).toContain('color: #16a34a');
   });
 
-  it('uses the single configured report language for the digest surface', async () => {
+  it('uses the global generated-content language for the digest surface', async () => {
     deliverEmailMock.mockClear();
     const db = openDb();
     seedSuggestion(db, 'english-1', 'Groceries');

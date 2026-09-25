@@ -53,7 +53,7 @@ const GENERAL_INTELLIGENCE_TOOLS = {
       const memory = readIntelligenceMemory(
         db,
         scope.report.id,
-        intelligenceMemorySeed(scope.report.language),
+        intelligenceMemorySeed(scope.language),
       );
       return {
         ...memory,

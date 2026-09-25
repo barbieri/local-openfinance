@@ -14,6 +14,7 @@ const resolved: ResolvedConfig = {
   configHash: 'post-sync-test-hash',
   topicId: 'post-sync-test',
   config: {
+    language: 'pt-BR',
     storage: { databasePath: ':memory:' },
     sync: {
       forceBeforeFetch: false,

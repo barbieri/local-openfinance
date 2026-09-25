@@ -406,6 +406,10 @@ transcripts).
 | `similarityThreshold` | Minimum cosine similarity to surface embedding matches (0–1). Default: `0.82`. |
 | `pushCategoriesUpstream` | Ignored. Local classifications stay in SQLite. Default: `false`. |
 
+### `language`
+
+Top-level generated-content locale (`en-US` or `pt-BR`) used by reports, digest emails, charts, tables, and memory seeds. Default: `pt-BR`.
+
 ### `report`
 
 | Field | Description |
@@ -425,7 +429,6 @@ Optional ordered list of named reports. An omitted or empty list leaves the Repo
 | `schedule` | Required local schedule. See the schedule table below. |
 | `window` | Required date window: `last-complete-day`, `last-complete-week`, or `last-complete-month`. |
 | `prompts` | Required non-empty ordered list of `@DEFAULT_BASE_INSTRUCTIONS@` tokens or Markdown paths relative to the config file. |
-| `language` | Supported report locale (`en-US` or `pt-BR`) for text, translated taxonomy names, dates, numbers, and charts. Default: `pt-BR`. Keep it stable for a report. |
 | `send` | Delivery policy: `always`, `alerts`, or `never`. Default: `always`. |
 | `model` | Optional report-specific model. Uses the top-level `model` when omitted. |
 | `agentBudget` | Optional agent-loop limits with `analystMaxSteps` (2–16, default 8), `reviewerMaxSteps` (2–8, default 4), and `reviewerRounds` (1–2, default 2). An uncached taxonomy policy can add one provider call, so the default complete-run ceiling is 17. |
