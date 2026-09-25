@@ -9,9 +9,14 @@ import {
   intelligenceMemorySeed,
   saveIntelligenceRunChart,
   saveIntelligenceRunModelCall,
+  saveIntelligenceTaxonomyPolicy,
 } from '../src/db/intelligence.js';
 import { saveIntelligenceChat } from '../src/db/intelligence-chat.js';
 import { migrateDatabase } from '../src/db/migrate.js';
+import {
+  loadStoredReportTaxonomyPolicy,
+  resolveTaxonomyTreatment,
+} from '../src/intelligence/report-taxonomy-policy.js';
 import { BackgroundJobManager } from '../src/web/server/background-jobs.js';
 import { createWebApp } from '../src/web/server/server.js';
 
@@ -227,6 +232,80 @@ describe('intelligence web API', () => {
       body: JSON.stringify({ id: 'weekly:current', runId: null }),
     });
     expect(missingMessages.status).toBe(400);
+
+    const emptyPolicy = await app.request('/api/intelligence/reports/weekly/taxonomy-policy', {
+      headers: auth,
+    });
+    expect(emptyPolicy.status).toBe(200);
+    expect(await emptyPolicy.json()).toMatchObject({ reportId: 'weekly', decisions: [] });
+
+    saveIntelligenceTaxonomyPolicy(db, {
+      reportId: 'weekly',
+      taxonomyHash: 'test-hash',
+      policyJson: JSON.stringify({
+        generatedAt: '2026-09-25T12:00:00.000Z',
+        decisions: [
+          {
+            kind: 'category',
+            id: 'food',
+            path: 'Expenses > Food',
+            treatment: 'reportable',
+            confidence: 0.9,
+            reason: 'Generated.',
+            source: 'generated',
+          },
+        ],
+      }),
+    });
+    const changedPolicy = await app.request(
+      '/api/intelligence/reports/weekly/taxonomy-policy/decisions',
+      {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'category',
+          id: 'food',
+          treatment: 'internal-own-account',
+        }),
+      },
+    );
+    expect(changedPolicy.status).toBe(200);
+    expect(await changedPolicy.json()).toMatchObject({
+      reportId: 'weekly',
+      decisions: [{ id: 'food', treatment: 'internal-own-account', source: 'user' }],
+    });
+    const previewPolicy = loadStoredReportTaxonomyPolicy(db, 'weekly');
+    if (!previewPolicy) throw new Error('Expected the API to persist the taxonomy policy');
+    expect(
+      resolveTaxonomyTreatment(
+        [{ kind: 'category', id: 'food', path: 'Expenses > Food', depth: 1 }],
+        previewPolicy,
+      ),
+    ).toBe('internal-own-account');
+    const invalidPolicy = await app.request(
+      '/api/intelligence/reports/weekly/taxonomy-policy/decisions',
+      {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind: 'category', id: 'food', treatment: 'ignored' }),
+      },
+    );
+    expect(invalidPolicy.status).toBe(400);
+    const clearedPolicy = await app.request(
+      '/api/intelligence/reports/weekly/taxonomy-policy/decisions/category/food',
+      { method: 'DELETE', headers: auth },
+    );
+    expect(clearedPolicy.status).toBe(200);
+    expect(await clearedPolicy.json()).toMatchObject({
+      decisions: [{ id: 'food', treatment: 'reportable', source: 'generated' }],
+    });
+    expect(
+      (
+        await app.request('/api/intelligence/reports/unknown/taxonomy-policy', {
+          headers: auth,
+        })
+      ).status,
+    ).toBe(404);
 
     expect(
       (await app.request('/api/intelligence/reports/unknown/memory', { headers: auth })).status,

@@ -80,7 +80,7 @@ export function isTabId(value: string): value is TabId {
   return TAB_ID_SET.has(value);
 }
 
-export type ReportsSection = 'catalog' | 'current' | 'run' | 'chat' | 'memory';
+export type ReportsSection = 'catalog' | 'current' | 'run' | 'chat' | 'memory' | 'taxonomy';
 
 export type ParsedTabHash = {
   readonly route: 'tab';
@@ -187,6 +187,13 @@ function parseReportsHash(rest: string): ParsedTabHash {
     };
   }
   const reportId = safeDecodeURIComponent(first);
+  if (second === 'taxonomy') {
+    return {
+      ...emptyTabHash('reports'),
+      reportsSection: 'taxonomy',
+      reportsReportId: reportId,
+    };
+  }
   if (second === 'memory') {
     return {
       ...emptyTabHash('reports'),
@@ -246,6 +253,9 @@ export function buildReportsHash(
   }
   if (section === 'memory') {
     return `${reportPath}/memory`;
+  }
+  if (section === 'taxonomy') {
+    return `${reportPath}/taxonomy`;
   }
   if (section === 'chat') {
     return runId ? `${reportPath}/chat/${encodeURIComponent(runId)}` : `${reportPath}/chat`;

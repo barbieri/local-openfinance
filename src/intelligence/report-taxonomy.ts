@@ -3,8 +3,9 @@ import { listAnnotationCategories } from '../annotation/store.js';
 import type { AnnotationLabelPresentation } from '../db/annotation-labels.js';
 import { buildCategoryIndex } from '../db/category-display.js';
 import type { EnrichedTransaction } from '../db/transaction-details.js';
+import type { ReportTaxonomyKind } from './taxonomy-treatment.js';
 
-export type ReportTaxonomyKind = 'category' | 'label';
+export type { ReportTaxonomyKind } from './taxonomy-treatment.js';
 
 export type ReportTaxonomy = {
   readonly kind: ReportTaxonomyKind;

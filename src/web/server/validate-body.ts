@@ -34,6 +34,9 @@ const validators = {
   saveIntelligenceMemory: ajv.compile({
     $ref: 'https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json#/$defs/saveIntelligenceMemory',
   }),
+  saveTaxonomyPolicyDecision: ajv.compile({
+    $ref: 'https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json#/$defs/saveTaxonomyPolicyDecision',
+  }),
   saveReportRegeneration: ajv.compile({
     $ref: 'https://github.com/barbieri/local-openfinance/schemas/web-api.schema.json#/$defs/saveReportRegeneration',
   }),

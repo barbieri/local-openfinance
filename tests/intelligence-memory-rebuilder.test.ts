@@ -3,7 +3,9 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   intelligenceMemorySeed,
   readIntelligenceMemory,
+  readIntelligenceTaxonomyPolicy,
   saveIntelligenceMemory,
+  saveIntelligenceTaxonomyPolicy,
 } from '../src/db/intelligence.js';
 import { migrateDatabase } from '../src/db/migrate.js';
 import {
@@ -17,6 +19,9 @@ import { addDaysToLocalDateKey } from '../src/intelligence/period.js';
 import { resolveReportQueryScope } from '../src/intelligence/report-scope.js';
 import {
   createReportTaxonomyPolicyResolver,
+  loadStoredReportTaxonomyPolicy,
+  removeReportTaxonomyPolicyOverride,
+  saveReportTaxonomyPolicyOverride,
   type TaxonomyPolicyDecision,
 } from '../src/intelligence/report-taxonomy-policy.js';
 import type { ResolvedConfig, ResolvedReportConfig } from '../src/types.js';
@@ -290,5 +295,189 @@ describe('report memory rebuilding', () => {
     });
     expect(cached).toMatchObject({ source: 'cache', generation: { calls: 0 } });
     expect(generatePolicy).toHaveBeenCalledOnce();
+
+    expect(
+      saveReportTaxonomyPolicyOverride(db, 'weekly', 'category', 'expenses', 'uncertain'),
+    ).toMatchObject({ decisions: [{ source: 'user', treatment: 'uncertain' }] });
+    db.prepare(
+      `INSERT INTO annotation_categories (id, name, parent_id, created_at)
+       VALUES ('income', 'Income', NULL, '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    const regenerated = await resolvePolicy({ db, scope, persist: true });
+    expect(regenerated.policy.decisions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'expenses', source: 'user', treatment: 'uncertain' }),
+        expect.objectContaining({ id: 'income', source: 'generated', treatment: 'reportable' }),
+      ]),
+    );
+  });
+
+  it('keeps an override saved while taxonomy regeneration is awaiting the model', async () => {
+    const db = openDb();
+    db.prepare(
+      `INSERT INTO annotation_categories (id, name, parent_id, created_at)
+       VALUES ('expenses', 'Expenses', NULL, '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    saveIntelligenceTaxonomyPolicy(db, {
+      reportId: 'weekly',
+      taxonomyHash: 'stale',
+      policyJson: JSON.stringify({
+        generatedAt: '2026-09-25T12:00:00.000Z',
+        decisions: [
+          {
+            kind: 'category',
+            id: 'expenses',
+            path: 'Expenses',
+            treatment: 'reportable',
+            confidence: 1,
+            reason: 'Generated.',
+            source: 'generated',
+          },
+        ],
+      }),
+    });
+    const generation = Promise.withResolvers<{
+      readonly decisions: {
+        readonly kind: 'category';
+        readonly id: string;
+        readonly treatment: 'reportable';
+        readonly confidence: 1;
+        readonly reason: string;
+      }[];
+    }>();
+    const generatePolicy = vi.fn(() => generation.promise);
+    const resolvePolicy = createReportTaxonomyPolicyResolver({ generatePolicy });
+    const scope = resolveReportQueryScope(resolved, 'weekly');
+
+    const pending = resolvePolicy({ db, scope, persist: true });
+    await vi.waitFor(() => expect(generatePolicy).toHaveBeenCalledOnce());
+    expect(
+      saveReportTaxonomyPolicyOverride(db, 'weekly', 'category', 'expenses', 'uncertain'),
+    ).toMatchObject({ decisions: [{ source: 'user', treatment: 'uncertain' }] });
+    generation.resolve({
+      decisions: [
+        {
+          kind: 'category',
+          id: 'expenses',
+          treatment: 'reportable',
+          confidence: 1,
+          reason: 'Regenerated.',
+        },
+      ],
+    });
+
+    await expect(pending).resolves.toMatchObject({
+      policy: { decisions: [{ source: 'user', treatment: 'uncertain' }] },
+    });
+    expect(loadStoredReportTaxonomyPolicy(db, 'weekly')).toMatchObject({
+      decisions: [{ source: 'user', treatment: 'uncertain' }],
+    });
+    expect(
+      JSON.parse(readIntelligenceTaxonomyPolicy(db, 'weekly')?.policyJson ?? '{}'),
+    ).toMatchObject({ decisions: [{ source: 'generated', treatment: 'reportable' }] });
+  });
+
+  it('does not resurrect an override cleared while taxonomy regeneration is awaiting the model', async () => {
+    const db = openDb();
+    db.prepare(
+      `INSERT INTO annotation_categories (id, name, parent_id, created_at)
+       VALUES ('expenses', 'Expenses', NULL, '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    saveIntelligenceTaxonomyPolicy(db, {
+      reportId: 'weekly',
+      taxonomyHash: 'stale',
+      policyJson: JSON.stringify({
+        generatedAt: '2026-09-25T12:00:00.000Z',
+        decisions: [
+          {
+            kind: 'category',
+            id: 'expenses',
+            path: 'Expenses',
+            treatment: 'reportable',
+            confidence: 1,
+            reason: 'Generated.',
+            source: 'generated',
+          },
+        ],
+      }),
+    });
+    saveReportTaxonomyPolicyOverride(db, 'weekly', 'category', 'expenses', 'uncertain');
+    const generation = Promise.withResolvers<{
+      readonly decisions: {
+        readonly kind: 'category';
+        readonly id: string;
+        readonly treatment: 'reportable';
+        readonly confidence: 1;
+        readonly reason: string;
+      }[];
+    }>();
+    const generatePolicy = vi.fn(() => generation.promise);
+    const resolvePolicy = createReportTaxonomyPolicyResolver({ generatePolicy });
+    const pending = resolvePolicy({
+      db,
+      scope: resolveReportQueryScope(resolved, 'weekly'),
+      persist: true,
+    });
+    await vi.waitFor(() => expect(generatePolicy).toHaveBeenCalledOnce());
+
+    expect(removeReportTaxonomyPolicyOverride(db, 'weekly', 'category', 'expenses')).toMatchObject({
+      decisions: [{ source: 'generated', treatment: 'reportable' }],
+    });
+    generation.resolve({
+      decisions: [
+        {
+          kind: 'category',
+          id: 'expenses',
+          treatment: 'reportable',
+          confidence: 1,
+          reason: 'Regenerated.',
+        },
+      ],
+    });
+
+    await expect(pending).resolves.toMatchObject({
+      policy: { decisions: [{ source: 'generated', treatment: 'reportable' }] },
+    });
+  });
+
+  it('regenerates a legacy stored payload without crashing', async () => {
+    const db = openDb();
+    db.prepare(
+      `INSERT INTO annotation_categories (id, name, parent_id, created_at)
+       VALUES ('expenses', 'Expenses', NULL, '2026-01-01T00:00:00.000Z')`,
+    ).run();
+    saveIntelligenceTaxonomyPolicy(db, {
+      reportId: 'weekly',
+      taxonomyHash: 'legacy-hash',
+      policyJson: JSON.stringify({
+        decisions: [
+          {
+            kind: 'category',
+            id: 'expenses',
+            path: 'Expenses',
+            treatment: 'reportable',
+            confidence: 1,
+            reason: 'Legacy.',
+          },
+        ],
+      }),
+    });
+    const resolvePolicy = createReportTaxonomyPolicyResolver({
+      generatePolicy: async ({ items }) => ({
+        decisions: items.map((item) => ({
+          kind: item.kind,
+          id: item.id,
+          treatment: 'reportable' as const,
+          confidence: 1,
+          reason: 'Regenerated.',
+        })),
+      }),
+    });
+    const scope = resolveReportQueryScope(resolved, 'weekly');
+
+    await expect(resolvePolicy({ db, scope, persist: true })).resolves.toMatchObject({
+      source: 'generated',
+      policy: { decisions: [{ source: 'generated' }] },
+    });
   });
 });

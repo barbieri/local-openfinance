@@ -16,6 +16,8 @@ When schema, loader, `config.example.json`, or config behavior changes,
 
 The schema is canonical.
 
+`schemas/web-api.schema.json` validates JSON mutation bodies at the Hono boundary. The `saveTaxonomyPolicyDecision` definition accepts a taxonomy kind, stable database id, and one treatment from the report-policy vocabulary; display names and paths are never mutation identifiers.
+
 ## Example topic configs
 
 `examples/expenses-config.json` (full) and

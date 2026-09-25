@@ -431,7 +431,7 @@ independently reviewed commit in the series.
    report and cadence. `--dry-run` performs generation and chart rendering but
    skips run, chart, memory, and SMTP writes. Live evaluation against
    `examples/tmp/openfinance.sqlite` completed with the configured model.
-8. ✅ Reports UI: catalog, current page, history with sanitized HTML and stored
+8. ✅ Reports UI: catalog, current page, history with sanitized HTML, stored taxonomy-policy management at `#/reports/<id>/taxonomy`, and stored
    charts, and persisted streaming chat (`useChat`) seeded from
    `#/reports/<id>/chat/<runId>`. The server accepts only one new text user
    message extending the exact stored transcript and keeps all tools scoped to

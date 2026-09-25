@@ -3,7 +3,9 @@ import { generateObject } from 'ai';
 import { z } from 'zod';
 import { buildAnnotationLabelIndex } from '../db/annotation-labels.js';
 import {
+  readIntelligenceTaxonomyOverrides,
   readIntelligenceTaxonomyPolicy,
+  saveIntelligenceTaxonomyOverride,
   saveIntelligenceTaxonomyPolicy,
 } from '../db/intelligence.js';
 import { type ModelUsage, modelCallOptions, normalizeModelUsage } from '../llm/generate.js';
@@ -16,13 +18,13 @@ import {
   type ReportTaxonomy,
   type ReportTaxonomyKind,
 } from './report-taxonomy.js';
+import {
+  REPORT_TAXONOMY_KINDS,
+  TAXONOMY_TREATMENTS,
+  type TaxonomyTreatment,
+} from './taxonomy-treatment.js';
 
-export type TaxonomyTreatment =
-  | 'internal-own-account'
-  | 'portfolio-movement'
-  | 'account-settlement'
-  | 'reportable'
-  | 'uncertain';
+export type { TaxonomyTreatment } from './taxonomy-treatment.js';
 
 export type TaxonomyPolicyDecision = {
   readonly kind: ReportTaxonomyKind;
@@ -31,24 +33,25 @@ export type TaxonomyPolicyDecision = {
   readonly treatment: TaxonomyTreatment;
   readonly confidence: number;
   readonly reason: string;
+  readonly source?: 'generated' | 'user';
+  readonly generated?: {
+    readonly treatment: TaxonomyTreatment;
+    readonly confidence: number;
+    readonly reason: string;
+  };
 };
 
 export type ReportTaxonomyPolicy = {
+  readonly generatedAt?: string;
   readonly decisions: readonly TaxonomyPolicyDecision[];
 };
 
 const generatedPolicySchema = z.strictObject({
   decisions: z.array(
     z.strictObject({
-      kind: z.enum(['category', 'label']),
+      kind: z.enum(REPORT_TAXONOMY_KINDS),
       id: z.string(),
-      treatment: z.enum([
-        'internal-own-account',
-        'portfolio-movement',
-        'account-settlement',
-        'reportable',
-        'uncertain',
-      ]),
+      treatment: z.enum(TAXONOMY_TREATMENTS),
       confidence: z.number().min(0).max(1),
       reason: z.string().max(300),
     }),
@@ -56,26 +59,29 @@ const generatedPolicySchema = z.strictObject({
 });
 
 const storedPolicySchema = z.strictObject({
+  generatedAt: z.string().optional(),
   decisions: z.array(
     z.strictObject({
-      kind: z.enum(['category', 'label']),
+      kind: z.enum(REPORT_TAXONOMY_KINDS),
       id: z.string(),
       path: z.string(),
-      treatment: z.enum([
-        'internal-own-account',
-        'portfolio-movement',
-        'account-settlement',
-        'reportable',
-        'uncertain',
-      ]),
+      treatment: z.enum(TAXONOMY_TREATMENTS),
       confidence: z.number().min(0).max(1),
       reason: z.string(),
+      source: z.enum(['generated', 'user']).optional(),
+      generated: z
+        .strictObject({
+          treatment: z.enum(TAXONOMY_TREATMENTS),
+          confidence: z.number().min(0).max(1),
+          reason: z.string(),
+        })
+        .optional(),
     }),
   ),
 });
 
-const EMPTY_POLICY: ReportTaxonomyPolicy = { decisions: [] };
-const TAXONOMY_POLICY_VERSION = 2;
+const EMPTY_POLICY: ReportTaxonomyPolicy = { generatedAt: '', decisions: [] };
+const TAXONOMY_POLICY_VERSION = 3;
 const MIN_TREATMENT_CONFIDENCE = 0.8;
 
 type ResolveReportTaxonomyPolicyInput = {
@@ -123,48 +129,29 @@ export function createReportTaxonomyPolicyResolver(dependencies: {
     });
     const stored = readIntelligenceTaxonomyPolicy(input.db, input.scope.report.id);
     if (stored?.taxonomyHash === taxonomyHash) {
-      const parsed = parseStoredPolicy(stored.policyJson);
+      const parsed = parseStoredGeneratedPolicy(stored.policyJson);
       if (parsed) {
-        return { policy: parsed, source: 'cache', generation: { calls: 0 } };
+        return {
+          policy: composePolicy(input.db, input.scope.report.id, parsed),
+          source: 'cache',
+          generation: { calls: 0 },
+        };
       }
     }
 
     const generated = await dependencies.generatePolicy({ scope: input.scope, items });
-    const generatedByKey = new Map(
-      generated.decisions.map((decision) => [`${decision.kind}:${decision.id}`, decision]),
-    );
-    const policy: ReportTaxonomyPolicy = {
-      decisions: items.map((item) => {
-        const decision = generatedByKey.get(`${item.kind}:${item.id}`);
-        return {
-          ...item,
-          treatment:
-            decision && decision.confidence >= MIN_TREATMENT_CONFIDENCE
-              ? decision.treatment
-              : 'uncertain',
-          confidence: decision?.confidence ?? 0,
-          reason: decision?.reason ?? 'The model returned no decision.',
-        };
-      }),
-    };
+    const generatedPolicy = buildGeneratedPolicy(items, generated.decisions);
     if (input.persist) {
       saveIntelligenceTaxonomyPolicy(input.db, {
         reportId: input.scope.report.id,
         taxonomyHash,
-        policyJson: JSON.stringify(policy),
+        policyJson: JSON.stringify(generatedPolicy),
       });
     }
     return {
-      policy,
+      policy: composePolicy(input.db, input.scope.report.id, generatedPolicy),
       source: 'generated',
-      generation: {
-        calls: 1,
-        ...(generated.usage ? { usage: generated.usage } : {}),
-        ...(generated.durationMs === undefined ? {} : { durationMs: generated.durationMs }),
-        ...(generated.providerMetadata === undefined
-          ? {}
-          : { providerMetadata: generated.providerMetadata }),
-      },
+      generation: presentPolicyGeneration(generated),
     };
   };
 }
@@ -208,7 +195,45 @@ export function loadStoredReportTaxonomyPolicy(
   reportId: string,
 ): ReportTaxonomyPolicy | null {
   const stored = readIntelligenceTaxonomyPolicy(db, reportId);
-  return stored ? parseStoredPolicy(stored.policyJson) : null;
+  const generated = stored ? parseStoredGeneratedPolicy(stored.policyJson) : null;
+  return generated ? composePolicy(db, reportId, generated) : null;
+}
+
+export function saveReportTaxonomyPolicyOverride(
+  db: DatabaseSync,
+  reportId: string,
+  kind: ReportTaxonomyKind,
+  id: string,
+  treatment: TaxonomyTreatment,
+): ReportTaxonomyPolicy | null {
+  const stored = readIntelligenceTaxonomyPolicy(db, reportId);
+  const generated = stored ? parseStoredGeneratedPolicy(stored.policyJson) : null;
+  if (!generated || !hasDecision(generated, kind, id)) return null;
+  saveIntelligenceTaxonomyOverride(db, {
+    reportId,
+    kind,
+    taxonomyId: id,
+    treatment,
+  });
+  return composePolicy(db, reportId, generated);
+}
+
+export function removeReportTaxonomyPolicyOverride(
+  db: DatabaseSync,
+  reportId: string,
+  kind: ReportTaxonomyKind,
+  id: string,
+): ReportTaxonomyPolicy | null {
+  const stored = readIntelligenceTaxonomyPolicy(db, reportId);
+  const generated = stored ? parseStoredGeneratedPolicy(stored.policyJson) : null;
+  if (!generated || !hasDecision(generated, kind, id)) return null;
+  saveIntelligenceTaxonomyOverride(db, {
+    reportId,
+    kind,
+    taxonomyId: id,
+    treatment: null,
+  });
+  return composePolicy(db, reportId, generated);
 }
 
 export function resolveTaxonomyTreatment(
@@ -240,6 +265,43 @@ export function resolveTaxonomyTreatment(
   return 'uncertain';
 }
 
+function presentPolicyGeneration(generated: Awaited<ReturnType<GenerateTaxonomyPolicy>>) {
+  return {
+    calls: 1 as const,
+    ...(generated.usage ? { usage: generated.usage } : {}),
+    ...(generated.durationMs === undefined ? {} : { durationMs: generated.durationMs }),
+    ...(generated.providerMetadata === undefined
+      ? {}
+      : { providerMetadata: generated.providerMetadata }),
+  };
+}
+
+function buildGeneratedPolicy(
+  items: readonly Pick<TaxonomyPolicyDecision, 'kind' | 'id' | 'path'>[],
+  generated: z.infer<typeof generatedPolicySchema>['decisions'],
+): ReportTaxonomyPolicy {
+  const generatedByKey = new Map(
+    generated.map((decision) => [`${decision.kind}:${decision.id}`, decision]),
+  );
+  return {
+    generatedAt: new Date().toISOString(),
+    decisions: items.map((item) => {
+      const decision = generatedByKey.get(`${item.kind}:${item.id}`);
+      const generatedDecision = {
+        ...item,
+        treatment:
+          decision && decision.confidence >= MIN_TREATMENT_CONFIDENCE
+            ? decision.treatment
+            : 'uncertain',
+        confidence: decision?.confidence ?? 0,
+        reason: decision?.reason ?? 'The model returned no decision.',
+        source: 'generated' as const,
+      };
+      return generatedDecision;
+    }),
+  };
+}
+
 function collectTaxonomyItems(
   db: DatabaseSync,
   language: string,
@@ -263,12 +325,63 @@ function collectTaxonomyItems(
   );
 }
 
-function parseStoredPolicy(value: string): ReportTaxonomyPolicy | null {
+function parseStoredGeneratedPolicy(value: string): ReportTaxonomyPolicy | null {
   try {
     const parsed: unknown = JSON.parse(value);
     const result = storedPolicySchema.safeParse(parsed);
-    return result.success ? result.data : null;
+    if (!result.success) return null;
+    return {
+      generatedAt: result.data.generatedAt ?? '',
+      decisions: result.data.decisions.map((decision) => {
+        const baseline = decision.source === 'user' ? decision.generated : decision;
+        return {
+          kind: decision.kind,
+          id: decision.id,
+          path: decision.path,
+          treatment: baseline?.treatment ?? 'uncertain',
+          confidence: baseline?.confidence ?? 0,
+          reason: baseline?.reason ?? '',
+          source: 'generated' as const,
+        };
+      }),
+    };
   } catch {
     return null;
   }
+}
+
+function composePolicy(
+  db: DatabaseSync,
+  reportId: string,
+  generatedPolicy: ReportTaxonomyPolicy,
+): ReportTaxonomyPolicy {
+  const overrides = new Map(
+    readIntelligenceTaxonomyOverrides(db, reportId).map((override) => [
+      `${override.kind}:${override.taxonomyId}`,
+      override.treatment,
+    ]),
+  );
+  return {
+    ...generatedPolicy,
+    decisions: generatedPolicy.decisions.map((decision) => {
+      const treatment = overrides.get(`${decision.kind}:${decision.id}`);
+      if (treatment == null) return decision;
+      return {
+        ...decision,
+        treatment,
+        confidence: 1,
+        reason: '',
+        source: 'user' as const,
+        generated: {
+          treatment: decision.treatment,
+          confidence: decision.confidence,
+          reason: decision.reason,
+        },
+      };
+    }),
+  };
+}
+
+function hasDecision(policy: ReportTaxonomyPolicy, kind: ReportTaxonomyKind, id: string): boolean {
+  return policy.decisions.some((decision) => decision.kind === kind && decision.id === id);
 }

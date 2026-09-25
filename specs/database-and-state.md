@@ -38,9 +38,11 @@ The database stores:
 - Stored report chat transcripts (`intelligence_chats`), keyed by `report_id`
   and an optional seed run id.
 - Report-scoped semantic taxonomy policies
-  (`intelligence_taxonomy_policies`), keyed by `report_id`. Each row replaces
-  the previous policy when its localized taxonomy hash changes; it is not an
-  append-only run history.
+  (`intelligence_taxonomy_policies`), keyed by `report_id`, and user overrides
+  (`intelligence_taxonomy_overrides`), keyed by report, taxonomy kind, and
+  taxonomy id. Generated cache rows replace the previous policy when the
+  localized taxonomy hash changes; override rows remain independent so a
+  concurrent regeneration cannot erase a user choice.
 
 Manual report runs may repeat for the same period. Scheduled runs store
 `trigger_kind = 'due'` and a cadence/local-date `due_key`; a partial unique

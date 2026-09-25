@@ -114,6 +114,10 @@ describe('app hash routing', () => {
       reportsReportId: 'weekly',
       reportsRunId: null,
     });
+    expect(parseAppHash('#/reports/weekly/taxonomy')).toMatchObject({
+      reportsSection: 'taxonomy',
+      reportsReportId: 'weekly',
+    });
     expect(parseAppHash('#/reports/weekly/memory')).toEqual({
       route: 'tab',
       tab: 'reports',
@@ -141,6 +145,7 @@ describe('app hash routing', () => {
     expect(buildReportsHash()).toBe('#/reports');
     expect(buildReportsHash('weekly')).toBe('#/reports/weekly');
     expect(buildReportsHash('weekly', 'memory')).toBe('#/reports/weekly/memory');
+    expect(buildReportsHash('weekly', 'taxonomy')).toBe('#/reports/weekly/taxonomy');
     expect(buildReportsHash('weekly', 'chat', 'run-1')).toBe('#/reports/weekly/chat/run-1');
     expect(buildReportsHash('weekly', 'run', 'run-1')).toBe('#/reports/weekly/run/run-1');
   });

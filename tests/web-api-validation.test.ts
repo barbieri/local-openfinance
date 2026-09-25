@@ -1,6 +1,10 @@
 import { Ajv2020 } from 'ajv/dist/2020.js';
 import { describe, expect, it } from 'vitest';
 import webApiSchema from '../schemas/web-api.schema.json' with { type: 'json' };
+import {
+  REPORT_TAXONOMY_KINDS,
+  TAXONOMY_TREATMENTS,
+} from '../src/intelligence/taxonomy-treatment.js';
 import { normalizeTransferConfirmBody } from '../src/transfers/detect.js';
 
 const ajv = new Ajv2020({ allErrors: true });
@@ -17,6 +21,12 @@ function validate(kind: string, body: unknown): boolean {
 }
 
 describe('web-api.schema.json', () => {
+  it('keeps taxonomy kinds and treatments aligned with the domain vocabulary', () => {
+    const properties = webApiSchema.$defs.saveTaxonomyPolicyDecision.properties;
+    expect(properties.kind.enum).toEqual(REPORT_TAXONOMY_KINDS);
+    expect(properties.treatment.enum).toEqual(TAXONOMY_TREATMENTS);
+  });
+
   it('accepts a valid transaction classification body', () => {
     expect(
       validate('saveTransactionClassification', {

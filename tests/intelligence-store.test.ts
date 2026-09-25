@@ -12,11 +12,13 @@ import {
   listIntelligenceRunChartNames,
   listIntelligenceRunModelCalls,
   listIntelligenceRuns,
+  readIntelligenceTaxonomyOverrides,
   readIntelligenceTaxonomyPolicy,
   releaseIntelligenceRunEmailDelivery,
   saveIntelligenceMemory,
   saveIntelligenceRunChart,
   saveIntelligenceRunModelCall,
+  saveIntelligenceTaxonomyOverride,
   saveIntelligenceTaxonomyPolicy,
 } from '../src/db/intelligence.js';
 import { migrateDatabase } from '../src/db/migrate.js';
@@ -128,6 +130,11 @@ describe('intelligence store', () => {
         'count'
       ],
     ).toBe(1);
+    expect(
+      db.prepare('SELECT COUNT(*) AS count FROM schema_migrations WHERE version = 36').get()?.[
+        'count'
+      ],
+    ).toBe(1);
 
     const first = getIntelligenceMemory(db, 'weekly');
     expect(first.markdown).toBe(INTELLIGENCE_MEMORY_SEED);
@@ -167,6 +174,54 @@ describe('intelligence store', () => {
     expect(
       db.prepare('SELECT COUNT(*) AS count FROM intelligence_taxonomy_policies').get()?.['count'],
     ).toBe(1);
+  });
+
+  it('migrates legacy taxonomy overrides once without rewriting the generated cache', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    db.exec('DROP TABLE intelligence_taxonomy_overrides');
+    db.prepare('DELETE FROM schema_migrations WHERE version = 36').run();
+    const legacyJson = JSON.stringify({
+      generatedAt: '2026-09-25T12:00:00.000Z',
+      decisions: [
+        {
+          kind: 'category',
+          id: 'food',
+          path: 'Expenses > Food',
+          treatment: 'internal-own-account',
+          confidence: 1,
+          reason: 'User override.',
+          source: 'user',
+          generated: { treatment: 'reportable', confidence: 0.9, reason: 'Generated.' },
+        },
+      ],
+    });
+    saveIntelligenceTaxonomyPolicy(db, {
+      reportId: 'weekly',
+      taxonomyHash: 'legacy',
+      policyJson: legacyJson,
+    });
+    db.prepare(
+      `INSERT INTO intelligence_taxonomy_policies (report_id, taxonomy_hash, policy_json, updated_at)
+       VALUES ('malformed', 'legacy', '{', '2026-09-25T12:00:00.000Z')`,
+    ).run();
+
+    expect(migrateDatabase(db)).toEqual([36]);
+    expect(readIntelligenceTaxonomyOverrides(db, 'weekly')).toMatchObject([
+      { kind: 'category', taxonomyId: 'food', treatment: 'internal-own-account' },
+    ]);
+    expect(readIntelligenceTaxonomyPolicy(db, 'weekly')?.policyJson).toBe(legacyJson);
+
+    saveIntelligenceTaxonomyOverride(db, {
+      reportId: 'weekly',
+      kind: 'category',
+      taxonomyId: 'food',
+      treatment: null,
+    });
+    expect(migrateDatabase(db)).toEqual([]);
+    expect(readIntelligenceTaxonomyOverrides(db, 'weekly')).toMatchObject([
+      { kind: 'category', taxonomyId: 'food', treatment: null },
+    ]);
   });
 
   it('upgrades due-run databases that predate email delivery columns', () => {
@@ -233,7 +288,7 @@ describe('intelligence store', () => {
       markApplied.run(version);
     }
 
-    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34, 35]);
+    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34, 35, 36]);
     const columns = db
       .prepare('PRAGMA table_info(intelligence_runs)')
       .all()

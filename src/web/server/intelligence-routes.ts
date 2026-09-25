@@ -10,6 +10,7 @@ import {
   listIntelligenceRunChartNames,
   listIntelligenceRunModelCalls,
   listIntelligenceRuns,
+  readIntelligenceTaxonomyPolicy,
   saveIntelligenceMemory,
 } from '../../db/intelligence.js';
 import {
@@ -31,7 +32,13 @@ import {
   saveReportRegeneration,
 } from '../../intelligence/report-runner.js';
 import { buildReportBriefing, resolveReportQueryScope } from '../../intelligence/report-scope.js';
-import { resolveReportTaxonomyPolicy } from '../../intelligence/report-taxonomy-policy.js';
+import {
+  removeReportTaxonomyPolicyOverride,
+  resolveReportTaxonomyPolicy,
+  saveReportTaxonomyPolicyOverride,
+  type TaxonomyPolicyDecision,
+  type TaxonomyTreatment,
+} from '../../intelligence/report-taxonomy-policy.js';
 import {
   executeScopedIntelligenceTool,
   IntelligenceToolError,
@@ -58,6 +65,42 @@ export function registerIntelligenceRoutes(app: Hono, ctx: WebServerContext): vo
         };
       }),
     });
+  });
+
+  app.get('/api/intelligence/reports/:reportId/taxonomy-policy', async (c) => {
+    const reportId = requireReportId(ctx, c.req.param('reportId'));
+    const scope = resolveReportQueryScope(ctx.resolved, reportId);
+    const policy = await resolveReportTaxonomyPolicy({ db: ctx.db, scope, persist: true });
+    return c.json(presentTaxonomyPolicy(ctx, reportId, policy));
+  });
+
+  app.put('/api/intelligence/reports/:reportId/taxonomy-policy/decisions', async (c) => {
+    const reportId = requireReportId(ctx, c.req.param('reportId'));
+    const body = await parseValidatedJsonBody<{
+      readonly kind: 'category' | 'label';
+      readonly id: string;
+      readonly treatment: TaxonomyTreatment;
+    }>(c, 'saveTaxonomyPolicyDecision');
+    const policy = saveReportTaxonomyPolicyOverride(
+      ctx.db,
+      reportId,
+      body.kind,
+      body.id,
+      body.treatment,
+    );
+    if (!policy) throw new HTTPException(404, { message: 'Taxonomy decision not found' });
+    return c.json(presentTaxonomyPolicy(ctx, reportId, policy));
+  });
+
+  app.delete('/api/intelligence/reports/:reportId/taxonomy-policy/decisions/:kind/:id', (c) => {
+    const reportId = requireReportId(ctx, c.req.param('reportId'));
+    const kind = c.req.param('kind');
+    if (kind !== 'category' && kind !== 'label') {
+      throw new HTTPException(400, { message: 'Invalid taxonomy kind' });
+    }
+    const policy = removeReportTaxonomyPolicyOverride(ctx.db, reportId, kind, c.req.param('id'));
+    if (!policy) throw new HTTPException(404, { message: 'Taxonomy decision not found' });
+    return c.json(presentTaxonomyPolicy(ctx, reportId, policy));
   });
 
   app.get('/api/intelligence/reports/:reportId/memory', (c) => {
@@ -372,6 +415,29 @@ function isPresentableReportChart(chart: {
       chart.name === 'investments-subtype' ||
       chart.name === 'investments-code')
   );
+}
+
+const TAXONOMY_TREATMENTS = [
+  'internal-own-account',
+  'portfolio-movement',
+  'account-settlement',
+  'reportable',
+  'uncertain',
+] as const satisfies readonly TaxonomyTreatment[];
+
+function presentTaxonomyPolicy(
+  ctx: WebServerContext,
+  reportId: string,
+  policy: { readonly generatedAt?: string; readonly decisions: readonly TaxonomyPolicyDecision[] },
+) {
+  const stored = readIntelligenceTaxonomyPolicy(ctx.db, reportId);
+  return {
+    reportId,
+    generatedAt: policy.generatedAt ?? stored?.updatedAt ?? '',
+    updatedAt: stored?.updatedAt ?? '',
+    decisions: policy.decisions.map(({ generated: _generated, ...decision }) => decision),
+    treatments: TAXONOMY_TREATMENTS,
+  };
 }
 
 function requireReportId(ctx: WebServerContext, reportId: string): string {

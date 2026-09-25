@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
+import type { ReportTaxonomyKind, TaxonomyTreatment } from '../intelligence/taxonomy-treatment.js';
 import { allSql, getSql, runSql } from './sqlite-query.js';
 
 export type IntelligenceMemoryUpdatedBy = 'user' | 'report-agent' | 'chat-agent';
@@ -83,6 +84,14 @@ export type IntelligenceTaxonomyPolicyRecord = {
   readonly reportId: string;
   readonly taxonomyHash: string;
   readonly policyJson: string;
+  readonly updatedAt: string;
+};
+
+export type IntelligenceTaxonomyOverrideRecord = {
+  readonly reportId: string;
+  readonly kind: ReportTaxonomyKind;
+  readonly taxonomyId: string;
+  readonly treatment: TaxonomyTreatment | null;
   readonly updatedAt: string;
 };
 
@@ -291,6 +300,54 @@ export function saveIntelligenceTaxonomyPolicy(
     input.reportId,
     input.taxonomyHash,
     input.policyJson,
+    updatedAt,
+  );
+  return { ...input, updatedAt };
+}
+
+export function readIntelligenceTaxonomyOverrides(
+  db: DatabaseSync,
+  reportId: string,
+): readonly IntelligenceTaxonomyOverrideRecord[] {
+  return allSql<{
+    readonly report_id: string;
+    readonly kind: ReportTaxonomyKind;
+    readonly taxonomy_id: string;
+    readonly treatment: TaxonomyTreatment | null;
+    readonly updated_at: string;
+  }>(
+    db,
+    `SELECT report_id, kind, taxonomy_id, treatment, updated_at
+     FROM intelligence_taxonomy_overrides
+     WHERE report_id = ?
+     ORDER BY kind, taxonomy_id`,
+    reportId,
+  ).map((row) => ({
+    reportId: row.report_id,
+    kind: row.kind,
+    taxonomyId: row.taxonomy_id,
+    treatment: row.treatment,
+    updatedAt: row.updated_at,
+  }));
+}
+
+export function saveIntelligenceTaxonomyOverride(
+  db: DatabaseSync,
+  input: Omit<IntelligenceTaxonomyOverrideRecord, 'updatedAt'>,
+): IntelligenceTaxonomyOverrideRecord {
+  const updatedAt = new Date().toISOString();
+  runSql(
+    db,
+    `INSERT INTO intelligence_taxonomy_overrides (
+       report_id, kind, taxonomy_id, treatment, updated_at
+     ) VALUES (?, ?, ?, ?, ?)
+     ON CONFLICT(report_id, kind, taxonomy_id) DO UPDATE SET
+       treatment = excluded.treatment,
+       updated_at = excluded.updated_at`,
+    input.reportId,
+    input.kind,
+    input.taxonomyId,
+    input.treatment,
     updatedAt,
   );
   return { ...input, updatedAt };

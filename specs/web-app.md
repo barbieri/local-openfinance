@@ -97,7 +97,7 @@ Validated write routes include:
 The Reports tab lists configured named reports with ids, schedules, latest-run
 timestamps, and alert counts. A report page renders stored run Markdown without
 raw HTML or Markdown images, displays only the persisted balance and allocation
-PNGs, and provides run history and editable per-report memory. A report with no
+PNGs, and provides run history, editable per-report memory, and a taxonomy-policy screen grouped by category or label root path. The policy screen shows generated and user decisions, allows treatment overrides, and can clear an override back to its generated value. A report with no
 runs shows a copyable, shell-safe CLI generation command.
 
 Current-report chat and chat seeded from a stored run use persisted transcripts.
@@ -167,8 +167,9 @@ Examples:
 - `#/reports` — catalog of configured named reports (not a run history).
 - `#/reports/<reportId>` — current page for that report (latest run).
 - `#/reports/<reportId>/run/<runId>`, `#/reports/<reportId>/chat`,
-  `#/reports/<reportId>/chat/<runId>`, `#/reports/<reportId>/memory` —
-  history, chat, and memory **scoped to that report**. Chat and Memory are
+  `#/reports/<reportId>/chat/<runId>`, `#/reports/<reportId>/memory`,
+  `#/reports/<reportId>/taxonomy` — history, chat, memory, and taxonomy policy
+  **scoped to that report**. Chat and Memory are
   not header tabs. See `specs/intelligence.md`. Old hashes without a report
   id redirect when exactly one report is configured. Otherwise the Reports
   page rejects the ambiguous link.

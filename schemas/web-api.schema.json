@@ -154,6 +154,25 @@
         "markdown": { "type": "string", "maxLength": 50000 }
       }
     },
+    "saveTaxonomyPolicyDecision": {
+      "description": "Set a user override for one stored report taxonomy decision.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "id", "treatment"],
+      "properties": {
+        "kind": { "enum": ["category", "label"] },
+        "id": { "type": "string", "minLength": 1, "maxLength": 200 },
+        "treatment": {
+          "enum": [
+            "internal-own-account",
+            "portfolio-movement",
+            "account-settlement",
+            "reportable",
+            "uncertain"
+          ]
+        }
+      }
+    },
     "saveReportRegeneration": {
       "type": "object",
       "additionalProperties": false,

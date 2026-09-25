@@ -213,7 +213,7 @@ account scope, `includeUnannotated`, window, and schedule are defined.
 `MAX_HISTORY_ROWS`, and account scope through `createTransactionWebListFilters`.
 The report taxonomy policy in `src/intelligence/report-taxonomy-policy.ts`, stored
 per report in `intelligence_taxonomy_policies`, applies semantic treatments; only
-facts whose treatment is `reportable` enter analysis. `src/intelligence/report-analysis.ts`
+facts whose treatment is `reportable` enter analysis. Stored decisions identify whether they came from generation or a user override. Regeneration refreshes generated decisions, adds new taxonomy items, and preserves user overrides. The Reports taxonomy-policy screen changes or clears overrides in SQLite, so the next preview or run observes them without a server restart or config edit. `src/intelligence/report-analysis.ts`
 builds `chartPeriods` and aggregates each month's `incomeCents` and
 `expenseCents`. `src/intelligence/charts.ts` renders `monthly-comparison`; its
 cumulative balance and least-squares regressions are pure functions of

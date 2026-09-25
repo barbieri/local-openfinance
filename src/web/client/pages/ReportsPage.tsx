@@ -19,6 +19,29 @@ type MemoryResponse = {
   readonly updatedBy: string;
 };
 
+type TaxonomyTreatment =
+  | 'internal-own-account'
+  | 'portfolio-movement'
+  | 'account-settlement'
+  | 'reportable'
+  | 'uncertain';
+
+type TaxonomyPolicyResponse = {
+  readonly reportId: string;
+  readonly generatedAt: string;
+  readonly updatedAt: string;
+  readonly treatments: readonly TaxonomyTreatment[];
+  readonly decisions: readonly {
+    readonly kind: 'category' | 'label';
+    readonly id: string;
+    readonly path: string;
+    readonly treatment: TaxonomyTreatment;
+    readonly confidence: number;
+    readonly reason: string;
+    readonly source: 'generated' | 'user';
+  }[];
+};
+
 type RunListItem = {
   readonly id: string;
   readonly periodStart: string;
@@ -205,6 +228,15 @@ function ReportPage({
         ))}
         <button
           type="button"
+          className={`rounded px-3 py-1.5 text-sm ${
+            section === 'taxonomy' ? 'bg-primary text-primary-foreground' : 'border hover:bg-accent'
+          }`}
+          onClick={() => setReportsSection(report.id, 'taxonomy')}
+        >
+          {t('reports.sectionTaxonomy')}
+        </button>
+        <button
+          type="button"
           className={`ml-auto rounded px-3 py-1.5 text-sm ${
             section === 'memory' ? 'bg-primary text-primary-foreground' : 'border hover:bg-accent'
           }`}
@@ -215,6 +247,8 @@ function ReportPage({
       </nav>
       {section === 'memory' ? (
         <ReportsMemorySection key={report.id} reportId={report.id} />
+      ) : section === 'taxonomy' ? (
+        <ReportsTaxonomySection key={report.id} reportId={report.id} />
       ) : section === 'chat' ? (
         <Suspense
           fallback={<p className="text-sm text-muted-foreground">{t('reports.loading')}</p>}
@@ -412,6 +446,124 @@ function ReportsCurrentSection({
       </div>
     </div>
   );
+}
+
+function ReportsTaxonomySection({ reportId }: { readonly reportId: string }) {
+  const { t } = useTranslation();
+  const queryClient = useQueryClient();
+  const endpoint = `/api/intelligence/reports/${encodeURIComponent(reportId)}/taxonomy-policy`;
+  const { data, isLoading, isError, error } = useQuery({
+    queryKey: ['intelligence-taxonomy-policy', reportId],
+    queryFn: () => apiJson<TaxonomyPolicyResponse>(endpoint),
+  });
+  const updateMutation = useMutation({
+    mutationFn: (input: {
+      readonly kind: 'category' | 'label';
+      readonly id: string;
+      readonly treatment: TaxonomyTreatment;
+    }) =>
+      apiJson<TaxonomyPolicyResponse>(`${endpoint}/decisions`, {
+        method: 'PUT',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(['intelligence-taxonomy-policy', reportId], policy);
+      toast.success(t('reports.taxonomySaved'));
+    },
+    onError: (mutationError: Error) =>
+      toast.error(t('toast.error'), { description: mutationError.message }),
+  });
+  const clearMutation = useMutation({
+    mutationFn: (input: { readonly kind: 'category' | 'label'; readonly id: string }) =>
+      apiJson<TaxonomyPolicyResponse>(
+        `${endpoint}/decisions/${input.kind}/${encodeURIComponent(input.id)}`,
+        { method: 'DELETE' },
+      ),
+    onSuccess: (policy) => {
+      queryClient.setQueryData(['intelligence-taxonomy-policy', reportId], policy);
+      toast.success(t('reports.taxonomyCleared'));
+    },
+    onError: (mutationError: Error) =>
+      toast.error(t('toast.error'), { description: mutationError.message }),
+  });
+
+  if (isLoading) return <p className="text-sm text-muted-foreground">{t('reports.loading')}</p>;
+  if (isError || !data) {
+    return (
+      <p className="text-sm text-destructive">
+        {error instanceof Error ? error.message : t('toast.error')}
+      </p>
+    );
+  }
+  const groups = groupTaxonomyDecisions(data.decisions);
+  return (
+    <section className="space-y-4">
+      <div>
+        <h3 className="font-semibold">{t('reports.taxonomyTitle')}</h3>
+        <p className="text-sm text-muted-foreground">{t('reports.taxonomyExplanation')}</p>
+      </div>
+      {[...groups.entries()].map(([root, decisions]) => (
+        <div key={root} className="space-y-2">
+          <h4 className="text-sm font-semibold">{root}</h4>
+          <ul className="divide-y divide-border rounded-lg border border-border">
+            {decisions.map((decision) => (
+              <li key={`${decision.kind}:${decision.id}`} className="space-y-2 p-3">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="min-w-0 flex-1 text-sm">{decision.path}</span>
+                  <span className="rounded bg-muted px-2 py-0.5 text-xs">
+                    {t(`reports.taxonomySource.${decision.source}`)}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <select
+                    className="rounded border border-input bg-background px-2 py-1 text-sm"
+                    aria-label={t('reports.taxonomyTreatmentFor', { path: decision.path })}
+                    value={decision.treatment}
+                    onChange={(event) =>
+                      updateMutation.mutate({
+                        kind: decision.kind,
+                        id: decision.id,
+                        treatment: event.target.value as TaxonomyTreatment,
+                      })
+                    }
+                  >
+                    {data.treatments.map((treatment) => (
+                      <option key={treatment} value={treatment}>
+                        {t(`reports.taxonomyTreatment.${treatment}`)}
+                      </option>
+                    ))}
+                  </select>
+                  {decision.source === 'user' ? (
+                    <button
+                      type="button"
+                      className="rounded border px-2 py-1 text-sm hover:bg-accent"
+                      onClick={() => clearMutation.mutate({ kind: decision.kind, id: decision.id })}
+                    >
+                      {t('reports.taxonomyClearOverride')}
+                    </button>
+                  ) : null}
+                </div>
+                <p className="text-xs text-muted-foreground">{decision.reason}</p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function groupTaxonomyDecisions(
+  decisions: TaxonomyPolicyResponse['decisions'],
+): ReadonlyMap<string, TaxonomyPolicyResponse['decisions'][number][]> {
+  const groups = new Map<string, TaxonomyPolicyResponse['decisions'][number][]>();
+  for (const decision of decisions) {
+    const root = decision.path.split(' > ')[0] ?? '';
+    const group = groups.get(root);
+    if (group) group.push(decision);
+    else groups.set(root, [decision]);
+  }
+  return groups;
 }
 
 function ReportsMemorySection({ reportId }: { readonly reportId: string }) {
