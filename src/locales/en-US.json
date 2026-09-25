@@ -493,5 +493,20 @@
   "sync.precomputeHint": "Prepare triage suggestions for unannotated transactions that do not have one yet. Also runs automatically after each sync unless skipped above. Check clear existing to discard pending suggestions and recompute all.",
   "jobs.abort": "Abort",
   "jobs.aborted": "Operation aborted",
-  "jobs.errorTitle": "Operation failed"
+  "jobs.errorTitle": "Operation failed",
+  "reports.chart.cashflow.title": "Balance and cash flow",
+  "reports.chart.cashflow.subtitle": "Expenses exclude internal transfers, investments, and settlements",
+  "reports.chart.categories.title": "Spending by category",
+  "reports.chart.categories.subtitle": "Main categories; the remainder is Others",
+  "reports.chart.labels.title": "Spending by label",
+  "reports.chart.labels.subtitle": "Main labels; the remainder is Others",
+  "reports.chart.investments.type.title": "Investments by type",
+  "reports.chart.investments.subtype.title": "Investments by subtype",
+  "reports.chart.investments.code.title": "Investments by code",
+  "reports.chart.other": "Other",
+  "reports.chart.others": "Others",
+  "reports.chart.legend.income": "Income",
+  "reports.chart.legend.expenses": "Expenses",
+  "reports.chart.legend.balance": "Balance",
+  "reports.chart.legend.currentPeriod": "Current period"
 }

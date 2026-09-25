@@ -1,12 +1,12 @@
 import i18n from 'i18next';
 import { initReactI18next } from 'react-i18next';
+import enUS from '../../../locales/en-US.json';
+import ptBR from '../../../locales/pt-BR.json';
 import {
   DEFAULT_UI_LOCALE,
   detectBrowserUiLocale,
   type UiLocale,
 } from '../../../utils/locale-resolve.js';
-import enUS from '../locales/en-US.json';
-import ptBR from '../locales/pt-BR.json';
 
 const UI_LOCALE_STORAGE_KEY = 'local-openfinance.ui-locale';
 

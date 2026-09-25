@@ -493,5 +493,20 @@
   "sync.precomputeHint": "Prepara sugestões de triagem para transações sem anotação que ainda não têm sugestão. Também roda automaticamente após cada sync, salvo se desmarcado acima. Marque limpar existentes para descartar sugestões pendentes e reprocessar todas.",
   "jobs.abort": "Abortar",
   "jobs.aborted": "Operação abortada",
-  "jobs.errorTitle": "Operação falhou"
+  "jobs.errorTitle": "Operação falhou",
+  "reports.chart.cashflow.title": "Saldo e fluxo de caixa",
+  "reports.chart.cashflow.subtitle": "Gastos excluem transferências internas, investimentos e liquidações",
+  "reports.chart.categories.title": "Gastos por categoria",
+  "reports.chart.categories.subtitle": "Categorias principais; o restante aparece como Outros",
+  "reports.chart.labels.title": "Gastos por etiqueta",
+  "reports.chart.labels.subtitle": "Etiquetas principais; o restante aparece como Outros",
+  "reports.chart.investments.type.title": "Investimentos por tipo",
+  "reports.chart.investments.subtype.title": "Investimentos por subtipo",
+  "reports.chart.investments.code.title": "Investimentos por código",
+  "reports.chart.other": "Outros",
+  "reports.chart.others": "Outros",
+  "reports.chart.legend.income": "Receitas",
+  "reports.chart.legend.expenses": "Gastos",
+  "reports.chart.legend.balance": "Saldo",
+  "reports.chart.legend.currentPeriod": "Período atual"
 }

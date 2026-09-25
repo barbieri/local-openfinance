@@ -5,6 +5,7 @@ import { buildAnnotationLabelIndex } from '../db/annotation-labels.js';
 import type { TransactionChartDataset } from '../db/transaction-charts.js';
 import { getNumberFormat } from '../utils/intl-formatters.js';
 import { resolveCategoryTranslationEnabled } from '../utils/locale-resolve.js';
+import { localText } from '../utils/locale-text.js';
 import type {
   InvestmentAllocationBucket,
   InvestmentReportSnapshot,
@@ -91,39 +92,19 @@ export function renderReportAnalysisCharts(
 
 export function reportChartAltText(name: IntelligenceChart['name'], language: string): string {
   if (name === 'cashflow') {
-    return localText(
-      language,
-      'Fluxo de caixa, saldo e período atual',
-      'Cash flow, balance, and current period',
-    );
+    return localText(language, 'reports.chart.cashflow');
   }
   if (name === 'categories') {
-    return localText(
-      language,
-      'Gastos por categoria ao longo do tempo',
-      'Spending by category over time',
-    );
+    return localText(language, 'reports.chart.categories');
   }
   if (
     name === 'investments-type' ||
     name === 'investments-subtype' ||
     name === 'investments-code'
   ) {
-    const level = investmentDimensionLabel(
-      name.replace('investments-', '') as 'type' | 'subtype' | 'code',
-      language,
-    );
-    return localText(
-      language,
-      `Alocação de investimentos por ${level}`,
-      `Investment allocation by ${level}`,
-    );
+    return localText(language, `reports.chart.${name}`);
   }
-  return localText(
-    language,
-    'Gastos por etiqueta ao longo do tempo',
-    'Spending by label over time',
-  );
+  return localText(language, 'reports.chart.labels');
 }
 
 export function renderInvestmentAllocationCharts(
@@ -177,11 +158,7 @@ function renderInvestmentAllocationChart(
       ].join('');
     })
     .join('');
-  const title = localText(
-    language,
-    `Investimentos por ${investmentDimensionLabel(dimension, language)}`,
-    `Investments by ${dimension}`,
-  );
+  const title = localText(language, `reports.chart.investments.${dimension}.title`);
   return toChart(
     name,
     `report-${name}.png`,
@@ -206,20 +183,12 @@ function compactInvestmentBuckets(
         ...visible,
         {
           id: 'other',
-          label: localText(language, 'Outros', 'Other'),
+          label: localText(language, 'reports.chart.other'),
           cents,
           count: remainder.reduce((sum, bucket) => sum + bucket.count, 0),
         },
       ]
     : visible;
-}
-
-function investmentDimensionLabel(
-  dimension: 'type' | 'subtype' | 'code',
-  language: string,
-): string {
-  if (!language.toLowerCase().startsWith('pt')) return dimension;
-  return dimension === 'type' ? 'tipo' : dimension === 'subtype' ? 'subtipo' : 'código';
 }
 
 function pieSlice(cx: number, cy: number, radius: number, start: number, end: number): string {
@@ -278,8 +247,8 @@ function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAna
     .map((balance, index) => `${x(index)},${balanceY(balance)}`)
     .join(' ');
   return svgDocument(`
-    <text x="${PLOT.left}" y="48" class="title">${escapeXml(localText(analysis.language, 'Saldo e fluxo de caixa', 'Balance and cash flow'))}</text>
-    <text x="${PLOT.left}" y="76" class="subtitle">${escapeXml(localText(analysis.language, 'Gastos excluem transferências internas, investimentos e liquidações', 'Expenses exclude internal transfers, investments, and settlements'))}</text>
+    <text x="${PLOT.left}" y="48" class="title">${escapeXml(localText(analysis.language, 'reports.chart.cashflow.title'))}</text>
+    <text x="${PLOT.left}" y="76" class="subtitle">${escapeXml(localText(analysis.language, 'reports.chart.cashflow.subtitle'))}</text>
     ${currentBand}${cashGrid}${balanceGrid}${bars}
     ${balances.length ? `<polyline points="${balancePath}" fill="none" stroke="#2563eb" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
     ${renderBucketLabels(analysis)}
@@ -328,26 +297,18 @@ function renderStackedAllocationSvg(
     .join('');
   const title =
     kind === 'category'
-      ? localText(analysis.language, 'Gastos por categoria', 'Spending by category')
-      : localText(analysis.language, 'Gastos por etiqueta', 'Spending by label');
+      ? localText(analysis.language, 'reports.chart.categories.title')
+      : localText(analysis.language, 'reports.chart.labels.title');
   const names = [
     ...ids.map((id) => displayNames?.[id] ?? id),
-    localText(analysis.language, 'Outros', 'Others'),
+    localText(analysis.language, 'reports.chart.others'),
   ];
   return svgDocument(`
     <text x="${PLOT.left}" y="48" class="title">${escapeXml(title)}</text>
     <text x="${PLOT.left}" y="76" class="subtitle">${escapeXml(
       kind === 'category'
-        ? localText(
-            analysis.language,
-            'Categorias principais; o restante aparece como Outros',
-            'Main categories; the remainder is Others',
-          )
-        : localText(
-            analysis.language,
-            'Etiquetas principais; o restante aparece como Outros',
-            'Main labels; the remainder is Others',
-          ),
+        ? localText(analysis.language, 'reports.chart.categories.subtitle')
+        : localText(analysis.language, 'reports.chart.labels.subtitle'),
     )}</text>
     ${renderDualGrid(0, max, analysis.currency, analysis.language, 'left')}
     ${bars}${renderBucketLabels(analysis)}${renderStackLegend(names)}
@@ -388,10 +349,10 @@ function renderBucketLabels(analysis: ReportAnalysis): string {
 
 function renderCashflowLegend(language: string): string {
   const entries = [
-    ['#16a34a', localText(language, 'Receitas', 'Income')],
-    ['#dc2626', localText(language, 'Gastos', 'Expenses')],
-    ['#2563eb', localText(language, 'Saldo', 'Balance')],
-    ['#dbeafe', localText(language, 'Período atual', 'Current period')],
+    ['#16a34a', localText(language, 'reports.chart.legend.income')],
+    ['#dc2626', localText(language, 'reports.chart.legend.expenses')],
+    ['#2563eb', localText(language, 'reports.chart.legend.balance')],
+    ['#dbeafe', localText(language, 'reports.chart.legend.currentPeriod')],
   ] as const;
   return entries
     .map(
@@ -431,10 +392,6 @@ function formatCompactMoneyLocale(cents: number, currency: string, language: str
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(cents / 100);
-}
-
-function localText(language: string, pt: string, en: string): string {
-  return language.toLowerCase().startsWith('pt') ? pt : en;
 }
 
 function shouldLabelBucket(values: readonly unknown[], index: number): boolean {
