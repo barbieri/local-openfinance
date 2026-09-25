@@ -17,6 +17,8 @@ import { buildCategoryIndex, type CategoryIndexEntry } from '../db/category-disp
 import type { AnnotationAssistProposal } from '../scoring/providers.js';
 import type { ResolvedConfig } from '../types.js';
 import { resolveLocalTimeZone, toLocalDateKey } from '../utils/local-date.js';
+import { resolveCategoryTranslationEnabled } from '../utils/locale-resolve.js';
+import { localText } from '../utils/locale-text.js';
 import { deliverEmail } from './email.js';
 import {
   projectSuggestionDigestRows,
@@ -69,11 +71,13 @@ export function createSyncSuggestionDigest(
 
     let suggestionCount = 0;
     try {
+      const language = resolveSuggestionDigestLanguage(input.resolved);
       const digestRows = prepareSuggestionDigest(
         input.db,
         input.previouslyPendingEntryIds,
         input.timeZone ?? resolveLocalTimeZone(),
         input.resolved.config.web.publicBaseUrl,
+        language,
       );
       suggestionCount = digestRows.newRows.length + digestRows.previousRows.length;
       if (suggestionCount === 0) {
@@ -87,10 +91,13 @@ export function createSyncSuggestionDigest(
         smtp,
         dryRun: input.dryRun === true,
         content: {
-          subject: `Digest de sugestões de classificação (${digestRows.newRows.length} novas, ${digestRows.previousRows.length} anteriores)`,
-          html: renderSuggestionDigestHtml(digestRows),
-          text: buildSuggestionDigestText(digestRows),
+          subject: localText(language, 'syncSuggestionDigest.subject')
+            .replace('{{newCount}}', String(digestRows.newRows.length))
+            .replace('{{previousCount}}', String(digestRows.previousRows.length)),
+          html: renderSuggestionDigestHtml(digestRows, language),
+          text: buildSuggestionDigestText(digestRows, language),
           attachments: [],
+          language,
         },
       });
 
@@ -109,13 +116,22 @@ export function createSyncSuggestionDigest(
 
 export const sendAssistSuggestionDigest = createSyncSuggestionDigest({ deliverEmail });
 
+function resolveSuggestionDigestLanguage(resolved: ResolvedConfig): string {
+  return resolved.config.reports.length === 1
+    ? (resolved.config.reports[0]?.language ?? 'pt-BR')
+    : 'pt-BR';
+}
+
 function prepareSuggestionDigest(
   db: DatabaseSync,
   previouslyPendingEntryIds: ReadonlySet<string>,
   timeZone: string,
   publicBaseUrl: string | undefined,
+  language: string,
 ): ReturnType<typeof projectSuggestionDigestRows> {
-  const categoryIndex = buildCategoryIndex(db);
+  const categoryIndex = buildCategoryIndex(db, {
+    translateNames: resolveCategoryTranslationEnabled(language),
+  });
   const annotationCategoryIndex = buildAnnotationHierarchyPathIndex(listAnnotationCategories(db));
   const labelContext = loadAnnotationLabelResolutionContext(db);
 
@@ -143,6 +159,7 @@ function prepareSuggestionDigest(
         labelContext.index,
         timeZone,
         suggestedLabelIds,
+        language,
       ),
     )
     .sort((a, b) => b.date.localeCompare(a.date));
@@ -158,6 +175,7 @@ function resolveSuggestionDigestRow(
   labelIndex: ReadonlyMap<string, AnnotationLabelPresentation>,
   timeZone: string,
   suggestedLabelIds: readonly string[],
+  language: string,
 ): ResolvedSuggestionDigestRow {
   const occurredAt = row.occurredAt;
   const localDate = toLocalDateKey(occurredAt, timeZone);
@@ -167,16 +185,22 @@ function resolveSuggestionDigestRow(
     rawMerchant !== null && rawMerchant.trim().length > 0
       ? rawMerchant
       : typeof rawDescription === 'string'
-        ? (rawDescription ?? 'Sem descrição')
-        : 'Sem descrição';
+        ? (rawDescription ?? localText(language, 'syncSuggestionDigest.noDescription'))
+        : localText(language, 'syncSuggestionDigest.noDescription');
   const accountCurrency = row.accountCurrency || 'BRL';
   const amountInAccountCurrency = row.amountInAccountCurrencyCents;
   const amountCents = amountInAccountCurrency ?? row.amountCents;
   const originalCategory = resolveOpenFinanceCategoryWithColor(
     row.categoryOverrideId ?? row.categoryId,
     categoryIndex,
+    language,
   );
-  const newCategory = resolveSuggestionCategory(proposal, categoryIndex, annotationCategoryIndex);
+  const newCategory = resolveSuggestionCategory(
+    proposal,
+    categoryIndex,
+    annotationCategoryIndex,
+    language,
+  );
   const originalLabels = resolveOriginalLabels(db, row.annotationId, labelIndex);
   const suggestedLabels = resolveLabeledSuggestions(suggestedLabelIds, labelIndex);
   return {
@@ -207,13 +231,17 @@ type LabeledText = {
 function resolveOpenFinanceCategoryWithColor(
   categoryId: string | null,
   categoryIndex: Map<string, CategoryIndexEntry>,
+  language: string,
 ): LabeledText {
   if (!categoryId) {
     return { text: '—', color: EMPTY_COLOR };
   }
   const category = categoryIndex.get(categoryId);
   if (!category) {
-    return { text: 'Categoria Open Finance removida', color: EMPTY_COLOR };
+    return {
+      text: localText(language, 'syncSuggestionDigest.removedOpenFinanceCategory'),
+      color: EMPTY_COLOR,
+    };
   }
   return { text: category.path, color: category.presentation.color };
 }
@@ -222,14 +250,20 @@ function resolveSuggestionCategory(
   proposal: AnnotationAssistProposal,
   categoryIndex: Map<string, CategoryIndexEntry>,
   annotationCategoryIndex: Map<string, string>,
+  language: string,
 ): LabeledText {
   if (proposal.categoryOverrideId) {
-    return resolveOpenFinanceCategoryWithColor(proposal.categoryOverrideId, categoryIndex);
+    return resolveOpenFinanceCategoryWithColor(
+      proposal.categoryOverrideId,
+      categoryIndex,
+      language,
+    );
   }
   if (proposal.subCategoryId || proposal.categoryId) {
     return resolveLocalCategoryWithColor(
       proposal.subCategoryId ?? proposal.categoryId,
       annotationCategoryIndex,
+      language,
     );
   }
   return { text: '—', color: EMPTY_COLOR };
@@ -238,13 +272,17 @@ function resolveSuggestionCategory(
 function resolveLocalCategoryWithColor(
   categoryId: string | null,
   categoryIndex: Map<string, string>,
+  language: string,
 ): LabeledText {
   if (!categoryId) {
     return { text: '—', color: EMPTY_COLOR };
   }
   const path = categoryIndex.get(categoryId);
   if (!path) {
-    return { text: 'Categoria local removida', color: EMPTY_COLOR };
+    return {
+      text: localText(language, 'syncSuggestionDigest.removedLocalCategory'),
+      color: EMPTY_COLOR,
+    };
   }
   return { text: path, color: EMPTY_COLOR };
 }

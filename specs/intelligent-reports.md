@@ -52,7 +52,8 @@ Reports always analyze transactions. The config intentionally has no
 `entryTypes` switch: investment positions, accounts, loans, and card bills are
 bounded supporting tools, not alternate inputs to the transaction analysis.
 
-Normalization follows these rules:
+Normalization uses `occurred_at` as the fact date
+(`useCreditPurchaseDate: false`). It follows these rules:
 
 - A positive credit-card value is an expense. A negative credit-card value is
   a refund.
@@ -110,10 +111,12 @@ reuses the policy while that hash matches and replaces the whole policy when
 one of those inputs changes. Decisions below 0.8 confidence remain uncertain.
 The policy is not report memory and does not grow per run.
 
-An explicit own-account classification wins at any hierarchy level. For other
-treatments, the deepest available category or label decision overrides its
-parent, so a reportable dividend child is not discarded merely because its
-parent is an investment portfolio.
+Treatment resolution evaluates only the leaf taxonomies in each fact's category
+and label set. A taxonomy whose path prefixes another taxonomy path of the same
+kind is not a leaf. The leaf decisions use this precedence:
+`internal-own-account` > `account-settlement` > `portfolio-movement` >
+`reportable` > `uncertain`. A reportable dividend leaf is not discarded merely
+because its parent is an investment portfolio.
 
 Spending findings, candidate profiles, and allocation charts exclude internal
 own-account transfers, portfolio movements, and account settlements. Balance

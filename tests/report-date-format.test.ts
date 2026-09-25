@@ -35,6 +35,7 @@ describe('report date style', () => {
 
   it('parses a real ISO report date for shared validation and formatting', () => {
     expect(parseReportDate('2026-08-18')).toBeInstanceOf(Date);
-    expect(formatReportDate('2026-08-18', 'weekly')).toBe('18/08 (ter)');
+    expect(formatReportDate('2026-08-18', 'weekly', 'pt-BR')).toBe('18/08 (ter)');
+    expect(formatReportDate('2026-08-18', 'weekly', 'en-US')).toBe('18/08 (Tue)');
   });
 });

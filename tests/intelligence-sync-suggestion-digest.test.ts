@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { upsertAssistSuggestion } from '../src/annotation/assist-suggestions.js';
 import { ensureAnnotationCategory, ensureAnnotationLabel } from '../src/annotation/store.js';
 import { migrateDatabase } from '../src/db/migrate.js';
+import { deliverEmail } from '../src/intelligence/email.js';
 import {
   createSyncSuggestionDigest,
   type SyncSuggestionDigestDelivery,
@@ -54,6 +55,28 @@ const resolved: ResolvedConfig = {
   },
 };
 
+const englishResolved: ResolvedConfig = {
+  ...resolved,
+  config: {
+    ...resolved.config,
+    reports: [
+      {
+        id: 'weekly',
+        name: 'Weekly',
+        schedule: { kind: 'weekly', weekday: 'monday', time: '08:00' },
+        window: { kind: 'last-complete-week' },
+        prompts: [],
+        language: 'en-US',
+        send: 'never',
+        model: { provider: 'openai', model: 'unused-test-model' },
+        agentBudget: { analystMaxSteps: 8, reviewerMaxSteps: 4, reviewerRounds: 2 },
+        accountIds: [],
+        includeUnannotated: true,
+      },
+    ],
+  },
+};
+
 const deliverEmailMock = vi.fn<SyncSuggestionDigestDelivery>(async () => ({
   sent: true,
   message: {},
@@ -74,8 +97,11 @@ function openDb(): DatabaseSync {
      VALUES ('acct-1', 'item-1', 'BANK', 'Checking', 'BRL', '{}', '2026-08-20T00:00:00.000Z')`,
   ).run();
   db.prepare(
-    `INSERT INTO categories (id, name, parent_id, parent_name, raw_json, synced_at)
-     VALUES ('05000000', 'Food', NULL, NULL, '{}', '2026-08-20T00:00:00.000Z')`,
+    `INSERT INTO categories (
+      id, name, name_translated, parent_id, parent_name, raw_json, synced_at
+    ) VALUES (
+      '05000000', 'Food', 'Alimentação', NULL, NULL, '{}', '2026-08-20T00:00:00.000Z'
+    )`,
   ).run();
   return db;
 }
@@ -156,8 +182,53 @@ describe('sync suggestion digest', () => {
     expect(content.html).toContain('Abrir triagem');
     expect(content.html).toContain('/#/transaction/new-1');
     expect(content.html).toContain('href="https://finance.example/#/triage"');
-    expect(content.html).toContain('Food');
+    expect(content.html).toContain('Alimentação');
     expect(content.html).toContain('color: #16a34a');
+  });
+
+  it('uses the single configured report language for the digest surface', async () => {
+    deliverEmailMock.mockClear();
+    const db = openDb();
+    seedSuggestion(db, 'english-1', 'Groceries');
+
+    const result = await sendAssistSuggestionDigest({
+      db,
+      resolved: englishResolved,
+      previouslyPendingEntryIds: new Set(),
+      timeZone: 'UTC',
+    });
+
+    expect(result).toEqual({ kind: 'sent', suggestionCount: 1 });
+    const content = deliverEmailMock.mock.calls[0]?.[0].content;
+    expect(content?.subject).toBe('Classification suggestion digest (1 new, 0 previous)');
+    expect(content?.html).toContain('New suggestions from this sync');
+    expect(content?.html).toContain('<th>Description</th>');
+    expect(content?.html).toContain('R$123.45');
+    expect(content?.html).toContain('Food');
+    expect(content?.html).not.toContain('Alimentação');
+    expect(content?.text).toContain('Quick access: https://finance.example/#/triage');
+    expect(content?.language).toBe('en-US');
+  });
+
+  it('marks rendered Portuguese digest email HTML with the configured language', async () => {
+    const renderDeliveryMock = vi.fn<SyncSuggestionDigestDelivery>((input) =>
+      deliverEmail({ ...input, dryRun: true }),
+    );
+    const sendRenderedDigest = createSyncSuggestionDigest({ deliverEmail: renderDeliveryMock });
+    const db = openDb();
+    seedSuggestion(db, 'portuguese-1', 'Mercado');
+
+    const result = await sendRenderedDigest({
+      db,
+      resolved,
+      previouslyPendingEntryIds: new Set(),
+      timeZone: 'UTC',
+      dryRun: true,
+    });
+
+    expect(result).toEqual({ kind: 'dry-run', suggestionCount: 1 });
+    const delivery = await renderDeliveryMock.mock.results[0]?.value;
+    expect(delivery?.message.html).toContain('<html lang="pt-BR">');
   });
 
   it('returns failed for malformed pending proposal during preparation', async () => {

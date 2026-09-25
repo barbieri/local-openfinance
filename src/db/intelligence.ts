@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import type { ReportTaxonomyKind, TaxonomyTreatment } from '../intelligence/taxonomy-treatment.js';
+import { localText } from '../utils/locale-text.js';
 import { allSql, getSql, runSql } from './sqlite-query.js';
 
 export type IntelligenceMemoryUpdatedBy = 'user' | 'report-agent' | 'chat-agent';
@@ -95,10 +96,10 @@ export type IntelligenceTaxonomyOverrideRecord = {
   readonly updatedAt: string;
 };
 
-export const INTELLIGENCE_MEMORY_SEED = '# Memory';
+export const INTELLIGENCE_MEMORY_SEED = localText('en-US', 'reports.memoryHeading');
 
 export function intelligenceMemorySeed(language: string): string {
-  return language.toLowerCase().startsWith('pt') ? '# Memória' : INTELLIGENCE_MEMORY_SEED;
+  return localText(language, 'reports.memoryHeading');
 }
 
 type MemoryRow = {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compactReportMemoryMarkdown,
+  ensureVisibleReportBody,
   parseReportGenerationOutput,
   REPORT_GENERATION_OUTPUT_SCHEMA,
   reportHtmlToText,
@@ -16,6 +17,16 @@ describe('report HTML contract', () => {
       ),
     ).toBe('# Episódios\n- Compra de veículo.');
     expect(compactReportMemoryMarkdown('# Empty\n', 'pt-BR')).toBe('# Memória');
+    expect(compactReportMemoryMarkdown('# Empty\n', 'en-US')).toBe('# Memory');
+  });
+
+  it('localizes the empty report body with the report language', () => {
+    expect(ensureVisibleReportBody('', 'pt-BR')).toContain(
+      'Nenhum achado material foi identificado neste período.',
+    );
+    expect(ensureVisibleReportBody('', 'en-US')).toContain(
+      'No material finding was identified for this period.',
+    );
   });
 
   it('uses the canonical Zod schema at the model boundary', () => {

@@ -1,4 +1,5 @@
 import type { ReportWindow } from '../types.js';
+import { localText } from '../utils/locale-text.js';
 import type { LocalDatePeriod } from './period.js';
 
 export type ReportDateStyle = 'weekly' | 'monthly' | 'iso';
@@ -43,13 +44,19 @@ export function parseReportDate(date: string): Date | null {
   return parsed;
 }
 
-export function formatReportDate(date: string, style: ReportDateStyle): string {
+export function formatReportDate(date: string, style: ReportDateStyle, language: string): string {
   const parsed = parseReportDate(date);
   if (parsed === null) throw new Error(`Invalid report date: ${date}`);
   const day = String(parsed.getUTCDate()).padStart(2, '0');
   const month = String(parsed.getUTCMonth() + 1).padStart(2, '0');
   if (style === 'weekly') {
-    return `${day}/${month} (${['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'][parsed.getUTCDay()]})`;
+    const weekday = new Intl.DateTimeFormat(language, {
+      weekday: 'short',
+      timeZone: 'UTC',
+    })
+      .format(parsed)
+      .replace(/\.$/u, '');
+    return `${day}/${month} (${weekday})`;
   }
   if (style === 'monthly') {
     return day;
@@ -57,8 +64,12 @@ export function formatReportDate(date: string, style: ReportDateStyle): string {
   return date;
 }
 
-export function formatReportPeriod(period: LocalDatePeriod, style: ReportDateStyle): string {
-  return `${formatReportDate(period.start, style)} a ${formatReportDate(period.end, style)}`;
+export function formatReportPeriod(
+  period: LocalDatePeriod,
+  style: ReportDateStyle,
+  language: string,
+): string {
+  return `${formatReportDate(period.start, style, language)} ${localText(language, 'reports.periodSeparator')} ${formatReportDate(period.end, style, language)}`;
 }
 
 export function formatLocalizedReportPeriod(

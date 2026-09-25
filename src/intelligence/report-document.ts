@@ -1,5 +1,6 @@
 import sanitizeHtml from 'sanitize-html';
 import { z } from 'zod';
+import { localText } from '../utils/locale-text.js';
 import { REPORT_HTML_CLASSES, REPORT_HTML_TAGS } from './report-html-contract.js';
 import { isSupportedReportHref } from './report-links.js';
 
@@ -60,9 +61,7 @@ export function reportHtmlToText(value: string): string {
 export function ensureVisibleReportBody(value: string, language: string): string {
   if (reportHtmlToText(value).length > 0) return value;
 
-  const status = language.toLowerCase().startsWith('pt')
-    ? 'Nenhum achado material foi identificado neste período.'
-    : 'No material finding was identified for this period.';
+  const status = localText(language, 'reports.emptyFinding');
   return (
     '<div class="report-dashboard"><div class="report-findings"><p class="report-note">' +
     status +
@@ -80,5 +79,5 @@ export function compactReportMemoryMarkdown(value: string, language: string): st
       return !/^#{1,6}\s/u.test(firstLine ?? '') || content.some((line) => line.trim().length > 0);
     });
   if (sections.length > 0) return sections.join('\n\n');
-  return language.toLowerCase().startsWith('pt') ? '# Memória' : '# Memory';
+  return localText(language, 'reports.memoryHeading');
 }
