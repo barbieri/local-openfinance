@@ -18,6 +18,8 @@ import {
   saveIntelligenceRunModelCall,
 } from '../db/intelligence.js';
 import type { ResolvedConfig, ResolvedReportConfig } from '../types.js';
+import { getNumberFormat } from '../utils/intl-formatters.js';
+import { localText } from '../utils/locale-text.js';
 import {
   type IntelligenceChart,
   loadIntelligenceChartLabels,
@@ -27,7 +29,8 @@ import {
 } from './charts.js';
 import type { ReportEmailContent, ReportEmailDelivery } from './email.js';
 import { deliverReportEmail } from './email.js';
-import type { LocalDatePeriod } from './period.js';
+import { buildMonthlyComparisonModel } from './monthly-comparison.js';
+import { isCompleteCalendarMonth, type LocalDatePeriod } from './period.js';
 import {
   type GeneratedReport,
   type GenerateReportWithAgent,
@@ -65,6 +68,8 @@ export {
 export type DeliverReport = (
   input: Parameters<typeof deliverReportEmail>[0],
 ) => Promise<ReportEmailDelivery>;
+
+type ReportDeliveryMetadata = Pick<ReportEmailContent, 'reportName' | 'dateStyle'>;
 
 export type ExecuteReportInput = {
   readonly db: DatabaseSync;
@@ -115,6 +120,7 @@ export type ReportRegenerationPreview = {
   readonly memorySeed: string;
   readonly charts: readonly IntelligenceChart[];
   readonly briefing: ReportBriefing;
+  readonly deliveryMetadata: ReportDeliveryMetadata;
   readonly citedTransactionIds: readonly string[];
   readonly usage: ReportUsageMetrics;
   readonly modelCalls: readonly ReportModelCall[];
@@ -123,6 +129,7 @@ export type ReportRegenerationPreview = {
 
 export type GeneratedReportData = {
   readonly briefing: ReportBriefing;
+  readonly deliveryMetadata: ReportDeliveryMetadata;
   readonly citedTransactionIds: readonly string[];
   readonly modelCalls: readonly ReportModelCall[];
   readonly model: ResolvedReportConfig['model'];
@@ -195,14 +202,22 @@ export async function executeReport(
     );
   }
   const usage = aggregateReportUsage(modelCalls, scope.report.model.pricing);
+  const deterministicTable = buildMonthlyComparisonTable(briefing.analysis);
   const sanitizedHtml = ensureVisibleReportBody(
-    sanitizeReportBodyHtml(generated.html, input.resolved.config.web.publicBaseUrl),
+    sanitizeReportBodyHtml(
+      `${generated.html}${deterministicTable}`,
+      input.resolved.config.web.publicBaseUrl,
+    ),
     scope.report.language,
   );
   const markdown = reportHtmlToText(sanitizedHtml);
   assertSemanticReportPermalinks(sanitizedHtml);
   const html = qualifyReportPermalinks(sanitizedHtml, input.resolved.config.web.publicBaseUrl);
   const charts = renderCharts(input.db, scope, briefing);
+  const deliveryMetadata: ReportDeliveryMetadata = {
+    reportName: scope.report.name,
+    dateStyle: resolveReportDateStyle(scope.report.window.kind),
+  };
   const citedTransactionIds = collectCitedTransactionIds(html);
   const alertCount = briefing.analysis.mustReport.length + investmentAlertCount(briefing);
   const run = input.dryRun
@@ -225,10 +240,10 @@ export async function executeReport(
 
   const shouldSend = input.send && reportSendPolicyAllows(scope.report, alertCount);
   const emailContent: ReportEmailContent = {
-    reportName: scope.report.name,
+    reportName: deliveryMetadata.reportName,
     subject: generated.subject,
     period: scope.period,
-    dateStyle: resolveReportDateStyle(scope.report.window.kind),
+    dateStyle: deliveryMetadata.dateStyle,
     language: scope.report.language,
     html,
     text: markdown,
@@ -263,7 +278,14 @@ export async function executeReport(
     run: deliveredRun,
     emailSent: email?.sent ?? false,
     usage,
-    generated: { briefing, citedTransactionIds, modelCalls, model: scope.report.model, memorySeed },
+    generated: {
+      briefing,
+      deliveryMetadata,
+      citedTransactionIds,
+      modelCalls,
+      model: scope.report.model,
+      memorySeed,
+    },
   };
 }
 
@@ -301,6 +323,7 @@ export async function previewReportRegeneration(
     charts: executed.charts,
     memorySeed: executed.generated.memorySeed,
     briefing: executed.generated.briefing,
+    deliveryMetadata: executed.generated.deliveryMetadata,
     citedTransactionIds: executed.generated.citedTransactionIds,
     usage: executed.usage,
     modelCalls: executed.generated.modelCalls,
@@ -330,7 +353,7 @@ export function saveReportRegeneration(
       periodEnd: preview.period.end,
       subject: preview.subject,
       alertCount: preview.alertCount,
-      briefingJson: JSON.stringify(preview.briefing),
+      briefingJson: serializeStoredBriefing(preview.briefing, preview.deliveryMetadata),
       investmentSnapshotVersion: preview.briefing.investments.version,
       investmentScopeFingerprint: preview.briefing.investments.scopeFingerprint,
       markdown: preview.markdown,
@@ -366,6 +389,91 @@ export function saveReportRegeneration(
     db.exec('ROLLBACK');
     throw error;
   }
+}
+
+export function buildMonthlyComparisonTable(analysis: ReportBriefing['analysis']): string {
+  if (analysis.period.cadence !== 'monthly') return '';
+  const { buckets, balances, expenses, income, monthlyBalances, incomeMom, expenseMom } =
+    buildMonthlyComparisonModel(analysis.chart);
+  const money = getNumberFormat(analysis.language, {
+    style: 'currency',
+    currency: analysis.currency,
+  });
+  const percent = getNumberFormat(analysis.language, {
+    style: 'percent',
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+    signDisplay: 'exceptZero',
+  });
+  const valueClass = (value?: number, increaseIsFavorable = true) =>
+    ` class="report-table-value${value && value > 0 ? ` report-table-${increaseIsFavorable ? 'positive' : 'negative'}` : value && value < 0 ? ` report-table-${increaseIsFavorable ? 'negative' : 'positive'}` : ''}"`;
+  const moneyRow = (
+    label: string,
+    values: readonly number[],
+    options: { colored?: boolean; increaseIsFavorable: boolean } = {
+      increaseIsFavorable: true,
+    },
+  ) =>
+    `<tr><th>${escapeReportHtml(label)}</th>${values
+      .map(
+        (value) =>
+          `<td${valueClass(options.colored ? value : undefined, options.increaseIsFavorable)}>${escapeReportHtml(money.format(value / 100))}</td>`,
+      )
+      .join('')}</tr>`;
+  const percentRow = (
+    label: string,
+    values: readonly (number | null)[],
+    options: { increaseIsFavorable: boolean },
+  ) =>
+    `<tr><th>${escapeReportHtml(label)}</th>${values
+      .map((value) =>
+        value === null
+          ? `<td${valueClass()}>—</td>`
+          : `<td${valueClass(value, options.increaseIsFavorable)}>${escapeReportHtml(percent.format(value))}</td>`,
+      )
+      .join('')}</tr>`;
+  return `<table class="report-table"><thead><tr><th>${escapeReportHtml(localText(analysis.language, 'reports.table.monthlyComparison.metric'))}</th>${buckets
+    .map((bucket) => {
+      const month = bucket.start.slice(0, 7);
+      const label = isCompleteCalendarMonth(bucket)
+        ? month
+        : localText(analysis.language, 'reports.chart.monthlyComparison.partialMonth').replace(
+            '{month}',
+            month,
+          );
+      return `<th>${escapeReportHtml(label)}</th>`;
+    })
+    .join('')}</tr></thead><tbody>${moneyRow(
+    localText(analysis.language, 'reports.table.monthlyComparison.expenses'),
+    expenses,
+  )}${moneyRow(
+    localText(analysis.language, 'reports.table.monthlyComparison.income'),
+    income,
+  )}${moneyRow(
+    localText(analysis.language, 'reports.table.monthlyComparison.monthlyBalance'),
+    monthlyBalances,
+    { colored: true, increaseIsFavorable: true },
+  )}${moneyRow(
+    localText(analysis.language, 'reports.table.monthlyComparison.balance'),
+    balances,
+  )}<tr class="report-table-section"><th>${escapeReportHtml(localText(analysis.language, 'reports.table.monthlyComparison.mom'))}</th>${buckets.map(() => '<td class="report-table-value"></td>').join('')}</tr>${percentRow(
+    localText(analysis.language, 'reports.table.monthlyComparison.incomeMom'),
+    incomeMom,
+    { increaseIsFavorable: true },
+  )}${percentRow(
+    localText(analysis.language, 'reports.table.monthlyComparison.expensesMom'),
+    expenseMom,
+    { increaseIsFavorable: false },
+  )}</tbody></table>`;
+}
+
+function escapeReportHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 export function sanitizeReportSubject(subject: string): string {
@@ -421,7 +529,10 @@ function persistReport(
       periodEnd: scope.period.end,
       subject: generated.subject,
       alertCount,
-      briefingJson: JSON.stringify(briefing),
+      briefingJson: serializeStoredBriefing(briefing, {
+        reportName: scope.report.name,
+        dateStyle: resolveReportDateStyle(scope.report.window.kind),
+      }),
       investmentSnapshotVersion: briefing.investments.version,
       investmentScopeFingerprint: briefing.investments.scopeFingerprint,
       markdown,
@@ -453,6 +564,13 @@ function persistReport(
     input.db.exec('ROLLBACK');
     throw error;
   }
+}
+
+function serializeStoredBriefing(
+  briefing: ReportBriefing,
+  deliveryMetadata: ReportDeliveryMetadata,
+): string {
+  return JSON.stringify({ ...briefing, deliveryMetadata });
 }
 
 function assertReportCanBePersisted(
@@ -538,16 +656,17 @@ async function retryDueDelivery(
       `Report ${scope.report.id} already ran for ${input.dueKey}.`,
     );
   }
-  const charts = loadStoredCharts(input.db, run.id, scope.report.language);
+  const { reportName, dateStyle, language } = readStoredDeliveryMetadata(run, scope);
+  const charts = loadStoredCharts(input.db, run.id, language);
   const delivered = await deliverPersistedReport(
     input,
     run,
     {
-      reportName: scope.report.name,
+      reportName,
       subject: run.subject,
       period: { start: run.periodStart, end: run.periodEnd },
-      dateStyle: resolveReportDateStyle(scope.report.window.kind),
-      language: scope.report.language,
+      dateStyle,
+      language,
       html: run.html,
       text: run.markdown,
       charts,
@@ -569,6 +688,48 @@ async function retryDueDelivery(
     usage: usageFromStoredRun(run),
     generated: null,
   };
+}
+
+function readStoredDeliveryMetadata(
+  run: IntelligenceRunRecord,
+  scope: ReportQueryScope,
+): ReportDeliveryMetadata & { readonly language: string } {
+  const briefing = parseStoredBriefing(run.briefingJson);
+  const analysis = storedField(briefing, 'analysis');
+  const storedLanguage = storedField(analysis, 'language');
+  const language =
+    storedLanguage === 'en-US' || storedLanguage === 'pt-BR'
+      ? storedLanguage
+      : scope.report.language;
+  const cadence = storedField(storedField(analysis, 'period'), 'cadence');
+  const delivery = storedField(briefing, 'deliveryMetadata');
+  const storedName = storedField(delivery, 'reportName');
+  const reportName =
+    typeof storedName === 'string' && storedName.trim() ? storedName : run.reportId;
+  const storedStyle = storedField(delivery, 'dateStyle');
+  const dateStyle =
+    storedStyle === 'weekly' || storedStyle === 'monthly' || storedStyle === 'iso'
+      ? storedStyle
+      : cadence === 'weekly'
+        ? 'weekly'
+        : cadence === 'monthly'
+          ? 'monthly'
+          : 'iso';
+  return { reportName, dateStyle, language };
+}
+
+function parseStoredBriefing(json: string): unknown {
+  try {
+    return JSON.parse(json);
+  } catch {
+    return null;
+  }
+}
+
+function storedField(value: unknown, key: string): unknown {
+  return value !== null && typeof value === 'object'
+    ? Object.getOwnPropertyDescriptor(value, key)?.value
+    : null;
 }
 
 function usageFromStoredRun(run: IntelligenceRunRecord): ReportUsageMetrics {
@@ -621,8 +782,15 @@ function loadStoredCharts(
   runId: string,
   language: string,
 ): readonly IntelligenceChart[] {
+  const primary = (['monthly-comparison', 'cashflow'] as const).flatMap((name) => {
+    const stored = getIntelligenceRunChart(db, runId, name);
+    return stored?.mimeType === 'image/png' ? [storedChart(name, stored.bytes, language)] : [];
+  });
+  if (primary.length === 0) {
+    throw new Error('Stored primary chart is unavailable for report delivery.');
+  }
   const required = [
-    requireStoredChart(db, runId, 'cashflow', language),
+    ...primary,
     requireStoredChart(db, runId, 'categories', language),
     requireStoredChart(db, runId, 'labels', language),
   ];

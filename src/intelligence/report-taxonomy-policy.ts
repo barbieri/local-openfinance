@@ -221,18 +221,19 @@ export function resolveTaxonomyTreatment(
       decision.confidence >= MIN_TREATMENT_CONFIDENCE ? decision.treatment : 'uncertain',
     ]),
   );
-  let maxDepth = 0;
-  let treatments: TaxonomyTreatment[] = [];
-  for (const taxonomy of taxonomies) {
-    const treatment = decisions.get(`${taxonomy.kind}:${taxonomy.id}`) ?? 'uncertain';
-    if (treatment === 'internal-own-account') return treatment;
-    if (taxonomy.depth > maxDepth) {
-      maxDepth = taxonomy.depth;
-      treatments = [treatment];
-    } else if (taxonomy.depth === maxDepth) {
-      treatments.push(treatment);
-    }
-  }
+  const leaves = taxonomies.filter(
+    (candidate) =>
+      !taxonomies.some(
+        (other) =>
+          other.kind === candidate.kind &&
+          other.id !== candidate.id &&
+          other.path.startsWith(`${candidate.path} > `),
+      ),
+  );
+  const treatments = leaves.map(
+    (taxonomy) => decisions.get(`${taxonomy.kind}:${taxonomy.id}`) ?? 'uncertain',
+  );
+  if (treatments.includes('internal-own-account')) return 'internal-own-account';
   if (treatments.includes('account-settlement')) return 'account-settlement';
   if (treatments.includes('portfolio-movement')) return 'portfolio-movement';
   if (treatments.includes('reportable')) return 'reportable';

@@ -108,7 +108,12 @@ function analysis(input: {
   readonly profiles?: readonly ReportProfile[] | undefined;
 }): ReportAnalysis {
   return {
-    period: { start: input.start, end: input.start, cadence: 'weekly' },
+    period: {
+      start: input.start,
+      end: input.start,
+      cadence: 'weekly',
+      comparisonBasis: 'equal-length',
+    },
     language: 'pt-BR',
     currency: 'BRL',
     summary: emptySummary,

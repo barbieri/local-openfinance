@@ -3,13 +3,15 @@ import type { DatabaseSync } from 'node:sqlite';
 import { Resvg } from '@resvg/resvg-js';
 import { buildAnnotationLabelIndex } from '../db/annotation-labels.js';
 import type { TransactionChartDataset } from '../db/transaction-charts.js';
-import { getNumberFormat } from '../utils/intl-formatters.js';
+import { getDateTimeFormat, getNumberFormat } from '../utils/intl-formatters.js';
 import { resolveCategoryTranslationEnabled } from '../utils/locale-resolve.js';
 import { localText } from '../utils/locale-text.js';
 import type {
   InvestmentAllocationBucket,
   InvestmentReportSnapshot,
 } from './investment-report-snapshot.js';
+import { buildMonthlyComparisonModel } from './monthly-comparison.js';
+import { isCompleteCalendarMonth } from './period.js';
 import type { ReportAnalysis } from './report-analysis-types.js';
 import { buildReportCategoryIndex } from './report-taxonomy.js';
 
@@ -26,6 +28,7 @@ const FONT_FILES = [
 export type IntelligenceChart = {
   readonly name:
     | 'cashflow'
+    | 'monthly-comparison'
     | 'categories'
     | 'labels'
     | 'investments-type'
@@ -67,11 +70,20 @@ export function renderReportAnalysisCharts(
 ): readonly IntelligenceChart[] {
   return [
     toChart(
-      'cashflow',
-      'report-cashflow.png',
-      'report-cashflow@local-openfinance',
-      reportChartAltText('cashflow', analysis.language),
-      renderCashflowSvg(dataset, analysis),
+      analysis.period.cadence === 'monthly' ? 'monthly-comparison' : 'cashflow',
+      analysis.period.cadence === 'monthly'
+        ? 'report-monthly-comparison.png'
+        : 'report-cashflow.png',
+      analysis.period.cadence === 'monthly'
+        ? 'report-monthly-comparison@local-openfinance'
+        : 'report-cashflow@local-openfinance',
+      reportChartAltText(
+        analysis.period.cadence === 'monthly' ? 'monthly-comparison' : 'cashflow',
+        analysis.language,
+      ),
+      analysis.period.cadence === 'monthly'
+        ? renderMonthlyComparisonSvg(analysis)
+        : renderCashflowSvg(dataset, analysis),
     ),
     toChart(
       'categories',
@@ -93,6 +105,9 @@ export function renderReportAnalysisCharts(
 export function reportChartAltText(name: IntelligenceChart['name'], language: string): string {
   if (name === 'cashflow') {
     return localText(language, 'reports.chart.cashflow');
+  }
+  if (name === 'monthly-comparison') {
+    return localText(language, 'reports.chart.monthlyComparison.alt');
   }
   if (name === 'categories') {
     return localText(language, 'reports.chart.categories');
@@ -205,6 +220,137 @@ function stableColor(id: string): string {
   let hash = 0;
   for (const character of id) hash = (hash * 31 + (character.codePointAt(0) ?? 0)) >>> 0;
   return `hsl(${hash % 360} 58% 42%)`;
+}
+
+export function renderMonthlyComparisonSvg(analysis: ReportAnalysis): string {
+  const { buckets, balances, expenses, income, trend } = buildMonthlyComparisonModel(
+    analysis.chart,
+  );
+  const domain = paddedDomain([
+    ...expenses,
+    ...income,
+    ...balances,
+    ...(trend
+      ? [
+          trend.expense.intercept + trend.expense.slope * trend.startIndex,
+          trend.expense.intercept + trend.expense.slope * trend.endIndex,
+        ]
+      : []),
+    ...(trend
+      ? [
+          trend.income.intercept + trend.income.slope * trend.startIndex,
+          trend.income.intercept + trend.income.slope * trend.endIndex,
+        ]
+      : []),
+    0,
+  ]);
+  const slot = (PLOT.right - PLOT.left) / Math.max(buckets.length, 1);
+  const x = (index: number) => PLOT.left + slot * (index + 0.5);
+  const y = (value: number) => scale(value, domain.min, domain.max, PLOT.bottom, PLOT.top);
+  const points = (series: readonly number[]) =>
+    series.map((value, index) => `${x(index)},${y(value)}`).join(' ');
+  const currentBand = buckets.length
+    ? `<rect x="${PLOT.left + slot * (buckets.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="#dbeafe" opacity="0.75"/>`
+    : '';
+  const line = (series: readonly number[], color: string) =>
+    series.length
+      ? `<polyline points="${points(series)}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`
+      : '';
+  const trendLine = (series: 'expense' | 'income', color: string) => {
+    if (!trend) return '';
+    const regression = trend[series];
+    return `<polyline class="monthly-trend" points="${x(trend.startIndex)},${y(regression.intercept + regression.slope * trend.startIndex)} ${x(trend.endIndex)},${y(regression.intercept + regression.slope * trend.endIndex)}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="10 8" opacity="0.75"/>`;
+  };
+  const lastBucket = buckets.at(-1);
+  const partialMonth = lastBucket && !isCompleteCalendarMonth(lastBucket);
+  return svgDocument(`
+    <text x="${PLOT.left}" y="42" class="title">${escapeXml(localText(analysis.language, 'reports.chart.monthlyComparison.title'))}</text>
+    ${partialMonth ? `<text x="${PLOT.right}" y="42" class="subtitle" text-anchor="end">${escapeXml(formatPartialMonth(lastBucket.start, analysis.language))}</text>` : ''}
+    ${renderMonthlyComparisonLegend(analysis.language, trend !== null)}
+    ${currentBand}${renderDualGrid(domain.min, domain.max, analysis.currency, analysis.language, 'left')}
+    ${line(expenses, '#dc2626')}${line(income, '#2563eb')}${line(balances, '#d25f31')}
+    ${trendLine('expense', '#dc2626')}${trendLine('income', '#2563eb')}
+    ${renderBucketLabels({ ...analysis, chart: buckets })}${renderMonthlyComparisonAnnotations(analysis, trend?.expense.slope ?? null, trend?.income.slope ?? null, balances.at(-1) ?? 0)}
+  `);
+}
+
+function renderMonthlyComparisonLegend(language: string, showTrends: boolean): string {
+  const entries = [
+    ['#dc2626', false, localText(language, 'reports.chart.monthlyComparison.legend.expenses')],
+    ['#dc2626', true, localText(language, 'reports.chart.monthlyComparison.legend.expensesTrend')],
+    ['#2563eb', false, localText(language, 'reports.chart.monthlyComparison.legend.income')],
+    ['#2563eb', true, localText(language, 'reports.chart.monthlyComparison.legend.incomeTrend')],
+    ['#d25f31', false, localText(language, 'reports.chart.monthlyComparison.legend.balance')],
+  ] as const;
+  const widths = [125, 165, 175, 215, 0];
+  let offset = 0;
+  return entries
+    .map(([color, dashed, label], index) => ({ color, dashed, label, width: widths[index] ?? 180 }))
+    .filter(({ dashed }) => showTrends || !dashed)
+    .map(({ color, dashed, label, width }) => {
+      const x = PLOT.left + offset;
+      offset += width;
+      return `<line x1="${x}" y1="76" x2="${x + 22}" y2="76" stroke="${color}" stroke-width="4"${dashed ? ' stroke-dasharray="7 5"' : ''}/><text x="${x + 30}" y="81" class="legend">${escapeXml(label)}</text>`;
+    })
+    .join('');
+}
+
+export function formatMonthlyTrendDelta(cents: number, currency: string, language: string): string {
+  return `${getNumberFormat(language, {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+    signDisplay: 'always',
+  }).format(cents / 100)}/${localText(language, 'reports.chart.monthlyComparison.perMonth')}`;
+}
+
+function renderMonthlyComparisonAnnotations(
+  analysis: ReportAnalysis,
+  expenseSlope: number | null,
+  incomeSlope: number | null,
+  finalBalance: number,
+): string {
+  const rows: { readonly color: string; readonly label: string; readonly value: string }[] = [];
+  if (expenseSlope !== null) {
+    rows.push({
+      color: '#dc2626',
+      label: localText(analysis.language, 'reports.chart.monthlyComparison.delta.expenses'),
+      value: formatMonthlyTrendDelta(expenseSlope, analysis.currency, analysis.language),
+    });
+  }
+  if (incomeSlope !== null) {
+    rows.push({
+      color: '#2563eb',
+      label: localText(analysis.language, 'reports.chart.monthlyComparison.delta.income'),
+      value: formatMonthlyTrendDelta(incomeSlope, analysis.currency, analysis.language),
+    });
+  }
+  rows.push({
+    color: '#d25f31',
+    label: localText(analysis.language, 'reports.chart.monthlyComparison.finalBalance'),
+    value: formatCompactMoneyLocale(finalBalance, analysis.currency, analysis.language),
+  });
+  return rows
+    .map(
+      ({ color, label, value }, index) =>
+        `<text x="${PLOT.left}" y="${584 + index * 20}" class="legend" style="fill:${color}">${escapeXml(label)} = ${escapeXml(value)}</text>`,
+    )
+    .join('');
+}
+
+function formatPartialMonth(start: string, language: string): string {
+  const month = getDateTimeFormat(language, {
+    month: 'short',
+    year: '2-digit',
+    timeZone: 'UTC',
+  })
+    .format(new Date(`${start}T12:00:00.000Z`))
+    .replace('.', '');
+  return localText(language, 'reports.chart.monthlyComparison.partialMonth').replace(
+    '{month}',
+    month,
+  );
 }
 
 function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAnalysis): string {

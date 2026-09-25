@@ -10,6 +10,7 @@ import {
   type ReportProfile,
   selectAnalysisProfiles,
 } from '../src/intelligence/report-analysis.js';
+import { buildMonthlyComparisonTable } from '../src/intelligence/report-runner.js';
 import { resolveReportQueryScope } from '../src/intelligence/report-scope.js';
 import { resolveTaxonomyTreatment } from '../src/intelligence/report-taxonomy-policy.js';
 
@@ -30,12 +31,15 @@ function openDb(): DatabaseSync {
   db.prepare(
     `INSERT INTO annotation_categories (id, name, parent_id, created_at) VALUES
        ('purchases', 'Compras', NULL, '2026-01-01T00:00:00.000Z'),
+       ('investments', 'Investimentos', NULL, '2026-01-01T00:00:00.000Z'),
        ('same-person', 'Transferência mesma titularidade', NULL, '2026-01-01T00:00:00.000Z')`,
   ).run();
   db.prepare(
     `INSERT INTO annotation_labels (id, name, parent_id, created_at) VALUES
        ('transport', 'Transporte', NULL, '2026-01-01T00:00:00.000Z'),
-       ('accessories', 'Acessórios', 'transport', '2026-01-01T00:00:00.000Z')`,
+       ('accessories', 'Acessórios', 'transport', '2026-01-01T00:00:00.000Z'),
+       ('investment-label', 'Investimentos', NULL, '2026-01-01T00:00:00.000Z'),
+       ('offshore', 'Offshore', 'investment-label', '2026-01-01T00:00:00.000Z')`,
   ).run();
   return db;
 }
@@ -422,6 +426,272 @@ describe('deterministic report analysis', () => {
     expect(analysis.mustReport).toEqual([]);
   });
 
+  it('flows the global language into generated table text', async () => {
+    const db = openDb();
+    insertTransaction(db, 'english-table', 'bank', '2026-08-12', -20_000, 'Groceries');
+    const loaded = await loadConfig('examples/expenses-config.json');
+    const resolved = {
+      ...loaded,
+      config: { ...loaded.config, language: 'en-US' as const },
+    };
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-08-01', end: '2026-08-31' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+    const table = buildMonthlyComparisonTable(analysis);
+
+    expect(analysis.language).toBe('en-US');
+    expect(table).toContain('<th>Metric</th>');
+    expect(table).toContain('<th>Expenses</th>');
+    expect(table).toContain('<th>Monthly balance</th>');
+    expect(table).toContain('<th>Cumulative balance</th>');
+    expect(table).toContain('<th>Income MoM</th>');
+    expect(table).toContain('<th>Expenses MoM</th>');
+  });
+
+  it('ends ad-hoc monthly comparison buckets on the requested partial month', async () => {
+    const db = openDb();
+    insertTransaction(db, 'may-expense', 'bank', '2026-05-12', -10_000, 'May');
+    insertTransaction(db, 'june-expense', 'bank', '2026-06-12', -20_000, 'June');
+    insertTransaction(db, 'july-expense', 'bank', '2026-07-12', -30_000, 'July');
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-05-01', end: '2026-07-15' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+    const table = buildMonthlyComparisonTable(analysis);
+
+    expect(analysis.chart).toHaveLength(12);
+    expect(
+      analysis.chart.slice(-3).map(({ start, end, expenseCents }) => ({
+        start,
+        end,
+        expenseCents,
+      })),
+    ).toEqual([
+      { start: '2026-05-01', end: '2026-05-31', expenseCents: 10_000 },
+      { start: '2026-06-01', end: '2026-06-30', expenseCents: 20_000 },
+      { start: '2026-07-01', end: '2026-07-15', expenseCents: 30_000 },
+    ]);
+    expect(table).toContain('<th>2026-07 parcial</th>');
+  });
+
+  it('clips a partial starting month to the requested ad-hoc range', async () => {
+    const db = openDb();
+    insertTransaction(db, 'before-range', 'bank', '2026-05-10', -10_000, 'Before range');
+    insertTransaction(db, 'inside-range', 'bank', '2026-05-20', -20_000, 'Inside range');
+    insertTransaction(db, 'after-range', 'bank', '2026-07-20', -30_000, 'After range');
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-05-15', end: '2026-07-15' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+    const table = buildMonthlyComparisonTable(analysis);
+
+    expect(
+      analysis.chart.slice(-3).map(({ start, end, expenseCents }) => ({
+        start,
+        end,
+        expenseCents,
+      })),
+    ).toEqual([
+      { start: '2026-05-15', end: '2026-05-31', expenseCents: 20_000 },
+      { start: '2026-06-01', end: '2026-06-30', expenseCents: 0 },
+      { start: '2026-07-01', end: '2026-07-15', expenseCents: 0 },
+    ]);
+    expect(table).toContain('<th>2026-05 parcial</th>');
+    expect(table).toContain('<th>2026-07 parcial</th>');
+  });
+
+  it.each([
+    {
+      name: 'multiple complete months',
+      period: { start: '2026-05-01', end: '2026-07-31' },
+      history: ['2026-01-10', '2026-02-10', '2026-03-10', '2026-04-10'],
+      current: ['2026-05-10', '2026-06-10', '2026-07-10'],
+      expectedDelta: '+R$ 0,00',
+      ratioAvailable: true,
+    },
+    {
+      name: 'a mid-month window',
+      period: { start: '2026-08-10', end: '2026-08-20' },
+      history: ['2026-04-10', '2026-05-10', '2026-06-10', '2026-07-10'],
+      current: ['2026-08-12'],
+      expectedDelta: '+R$ 1.000,00',
+      ratioAvailable: false,
+    },
+  ])('omits non-comparable monthly profile deltas and anomalies for $name', async (sample) => {
+    const db = openDb();
+    for (const [index, date] of [...sample.history, ...sample.current].entries()) {
+      const id = `expense-${index}`;
+      insertTransaction(db, id, 'bank', date, -100_000, 'Recurring household cost');
+      await saveEntryAnnotation(db, {
+        entryType: 'transaction',
+        entryId: id,
+        categoryId: 'purchases',
+        source: 'manual',
+      });
+    }
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: sample.period,
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+    const profile = analysis.profiles.find((item) => item.key === 'category:purchases');
+
+    expect(analysis.period.comparisonBasis).toBe('equal-length');
+    expect(analysis.summary.expenseDelta).toBe(sample.expectedDelta);
+    expect(analysis.summary.expenseRatio !== null).toBe(sample.ratioAvailable);
+    expect(analysis.summary.incomeDelta).toBe('+R$ 0,00');
+    expect(analysis.summary.incomeRatio).toBeNull();
+    expect(profile?.basis).toBe('month');
+    expect(profile?.current).toMatchObject({
+      comparable: false,
+      deltaCents: null,
+      deltaRatio: null,
+      expectedness: 'no-baseline',
+    });
+    expect(analysis.candidates.some((candidate) => candidate.kind === 'aggregate')).toBe(false);
+    expect(analysis.candidates.some((candidate) => candidate.kind === 'transaction')).toBe(true);
+    expect(analysis.candidates.every((candidate) => candidate.baseline === undefined)).toBe(true);
+    expect(
+      analysis.candidates
+        .filter((candidate) => candidate.kind === 'transaction')
+        .every((candidate) => candidate.signal === 'no-baseline'),
+    ).toBe(true);
+    expect(analysis.chart.at(-1)?.end).toBe(sample.period.end);
+  });
+
+  it('retains monthly comparisons for one complete calendar month', async () => {
+    const db = openDb();
+    for (const [index, date] of [
+      '2026-01-10',
+      '2026-02-10',
+      '2026-03-10',
+      '2026-04-10',
+      '2026-05-10',
+    ].entries()) {
+      const id = `expense-${index}`;
+      insertTransaction(db, id, 'bank', date, -100_000, 'Recurring household cost');
+      await saveEntryAnnotation(db, {
+        entryType: 'transaction',
+        entryId: id,
+        categoryId: 'purchases',
+        source: 'manual',
+      });
+    }
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-05-01', end: '2026-05-31' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+
+    expect(analysis.period.comparisonBasis).toBe('calendar-month');
+    expect(analysis.summary.expenseDelta).not.toBeNull();
+    expect(
+      analysis.profiles.find((item) => item.key === 'category:purchases')?.current.comparable,
+    ).toBe(true);
+  });
+
+  it('keeps a valid single-item active-day anomaly in an irregular monthly window', async () => {
+    const db = openDb();
+    for (const [index, date] of ['2026-07-01', '2026-07-05', '2026-07-09'].entries()) {
+      const id = `historical-${index}`;
+      insertTransaction(db, id, 'bank', date, -10_000, 'Historical household item');
+      await saveEntryAnnotation(db, {
+        entryType: 'transaction',
+        entryId: id,
+        categoryId: 'purchases',
+        source: 'manual',
+      });
+    }
+    insertTransaction(db, 'current-item', 'bank', '2026-08-12', -100_000, 'Current item');
+    await saveEntryAnnotation(db, {
+      entryType: 'transaction',
+      entryId: 'current-item',
+      categoryId: 'purchases',
+      source: 'manual',
+    });
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-08-10', end: '2026-08-20' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+    const candidate = analysis.candidates.find((item) => item.id === 'transaction:current-item');
+
+    expect(analysis.profiles.find((profile) => profile.key === 'category:purchases')?.basis).toBe(
+      'active-day',
+    );
+    expect(candidate?.signal).toBe('unusual');
+    expect(candidate?.baseline).toBeDefined();
+  });
+
+  it('loads the complete equal-length prior interval for a long ad-hoc monthly range', async () => {
+    const db = openDb();
+    insertTransaction(db, 'prior-expense', 'bank', '2022-02-01', -50_000, 'Prior expense');
+    insertTransaction(db, 'current-expense', 'bank', '2029-06-01', -100_000, 'Current expense');
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-01-01', end: '2029-12-31' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+
+    expect(analysis.period.comparisonBasis).toBe('equal-length');
+    expect(analysis.summary.expenseDelta).toBe('+R$ 500,00');
+  });
+
+  it.each([
+    { useCreditPurchaseDate: false, included: false },
+    { useCreditPurchaseDate: true, included: true },
+  ])(
+    'passes useCreditPurchaseDate=$useCreditPurchaseDate through report fact loading',
+    async ({ useCreditPurchaseDate, included }) => {
+      const db = openDb();
+      db.prepare(
+        `INSERT INTO transactions (
+           id, account_id, occurred_at, amount_cents, currency, description, raw_json, synced_at
+         ) VALUES (?, ?, ?, ?, 'BRL', ?, ?, '2026-08-17T00:00:00.000Z')`,
+      ).run(
+        'purchase-date',
+        'card',
+        '2026-09-12T12:00:00.000Z',
+        20_000,
+        'Purchase date basis',
+        JSON.stringify({ creditCardMetadata: { purchaseDate: '2026-08-12' } }),
+      );
+      const loaded = await loadConfig('examples/expenses-config.json');
+      const resolved = {
+        ...loaded,
+        config: {
+          ...loaded.config,
+          report: { ...loaded.config.report, useCreditPurchaseDate },
+        },
+      };
+      const scope = resolveReportQueryScope(resolved, 'weekly', {
+        timeZone: 'UTC',
+        period: { start: '2026-08-10', end: '2026-08-16' },
+      });
+
+      const packet = buildReportAnalysisPacket({ db, resolved, scope, policy: { decisions: [] } });
+
+      expect(packet.reportableFacts.some((fact) => fact.id === 'purchase-date')).toBe(included);
+    },
+  );
+
   it('respects includeUnannotated report scopes', async () => {
     const db = openDb();
     insertTransaction(db, 'classified', 'bank', '2026-08-12', -20_000, 'Classified');
@@ -449,6 +719,71 @@ describe('deterministic report analysis', () => {
     });
     expect(classified.summary.expense).toContain('200,00');
     expect(classified.classification.unclassified).toBe(0);
+  });
+
+  it('excludes only Investimentos category and nested-label movements from chart facts', async () => {
+    const db = openDb();
+    insertTransaction(db, 'ordinary', 'bank', '2026-08-12', -10_000, 'Groceries');
+    insertTransaction(db, 'category-investment', 'bank', '2026-08-13', -20_000, 'Broker');
+    insertTransaction(db, 'label-investment', 'bank', '2026-08-14', -30_000, 'Offshore');
+    await saveEntryAnnotation(db, {
+      entryType: 'transaction',
+      entryId: 'ordinary',
+      categoryId: 'purchases',
+      source: 'manual',
+    });
+    await saveEntryAnnotation(db, {
+      entryType: 'transaction',
+      entryId: 'category-investment',
+      categoryId: 'investments',
+      source: 'manual',
+    });
+    await saveEntryAnnotation(db, {
+      entryType: 'transaction',
+      entryId: 'label-investment',
+      categoryId: 'purchases',
+      labelIds: ['offshore'],
+      source: 'manual',
+    });
+    const resolved = await loadConfig('examples/expenses-config.json');
+    const scope = resolveReportQueryScope(resolved, 'weekly', {
+      timeZone: 'UTC',
+      period: { start: '2026-08-10', end: '2026-08-16' },
+    });
+    const policy = {
+      decisions: [
+        {
+          kind: 'category' as const,
+          id: 'investments',
+          path: 'Investimentos',
+          treatment: 'portfolio-movement' as const,
+          confidence: 1,
+          reason: 'Investment category.',
+        },
+        {
+          kind: 'label' as const,
+          id: 'investment-label',
+          path: 'Investimentos',
+          treatment: 'portfolio-movement' as const,
+          confidence: 1,
+          reason: 'Investment label.',
+        },
+        {
+          kind: 'label' as const,
+          id: 'offshore',
+          path: 'Investimentos > Offshore',
+          treatment: 'portfolio-movement' as const,
+          confidence: 1,
+          reason: 'Nested investment label.',
+        },
+      ],
+    };
+
+    const result = buildReportAnalysisPacket({ db, resolved, scope, policy });
+
+    expect(result.analysis.excluded.portfolio).toBe(2);
+    expect(result.analysis.chart.at(-1)?.expenseCents).toBe(10_000);
+    expect(result.reportableFacts.map((fact) => fact.id)).toEqual(['ordinary']);
   });
 
   it('does not pair equal amounts across accounts or distant dates as compensation', async () => {

@@ -15,6 +15,10 @@ export const REPORT_HTML_CLASSES = [
   'report-note',
   'report-citation',
   'report-table',
+  'report-table-value',
+  'report-table-positive',
+  'report-table-negative',
+  'report-table-section',
 ] as const;
 
 export const REPORT_HTML_TAGS = [

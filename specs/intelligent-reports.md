@@ -9,6 +9,12 @@ produce no findings.
 The report favors differences, recurrence, and exceptions over absolute
 totals. Every comparison with a non-zero baseline includes both the signed
 currency difference and the percentage difference.
+For a monthly-cadence report, calendar-month profile comparisons require
+exactly one complete calendar month. A multi-month or partial-month ad-hoc
+window uses an immediately preceding equal-length interval for summary
+differences and marks `analysis.period.comparisonBasis` as `equal-length`.
+It omits monthly profile-baseline anomaly candidates. Raw period totals,
+individual transaction candidates, and exact offset evidence remain available.
 
 Migration 030 clears report runs, report chats, charts, and report memory from
 the superseded dump-oriented report format. Taxonomy policies remain separate
@@ -170,17 +176,49 @@ Dry runs return the same metrics without persisting them.
 
 Each run stores three deterministic 1200 by 640 PNG charts:
 
-- `cashflow` shows income, analytical expenses, and account balance. It uses a
-  left currency axis for income and expenses and a right currency axis for
-  balance. The blue line is the combined selected-account balance at the end of
-  each bucket; it is not rebased to zero.
+- Daily and weekly reports use `cashflow`, which shows income, analytical
+  expenses, and account balance. It uses a left currency axis for income and
+  expenses and a right currency axis for balance. The blue line is the combined
+  selected-account balance at the end of each bucket; it is not rebased to zero.
+- Monthly reports replace `cashflow` with `monthly-comparison`. One shared
+  currency axis plots red monthly expenses, blue monthly income, and the orange
+  running sum of income minus expenses from the first displayed month. Dashed
+  same-color least-squares trend lines accompany expenses and income. The chart
+  annotates each trend's monthly slope and the final cumulative balance.
 - `categories` shows stacked parent-category spending by report period.
 - `labels` shows stacked parent-label spending by report period.
 
 A daily report shows 30 days. A weekly report shows 8 weeks. A monthly report
-shows 12 complete calendar months. Labels use `..` between range endpoints.
-The current report period has a blue background. Every chart has localized
-titles, legends, units, ticks, and axis labels.
+shows 12 months ending in the requested end month. A normal scheduled run ends
+on the last calendar day; an ad-hoc partial month ends at the requested date.
+Labels use `..` between range endpoints.
+Partial-month buckets are marked in the chart and table. Their raw amounts
+remain visible, but month-over-month cells involving them are unavailable and
+regression trends use only complete buckets at their original month positions.
+The latest displayed month has a blue background. Every chart has localized
+titles, legends, units, ticks, and axis labels. Monthly report bodies also append
+a deterministic sanitized `report-table` with the same 12 months as the chart
+and localized expense, income, and cumulative-balance rows. The runner computes
+this table from the analysis buckets. It also includes monthly balance and signed
+month-over-month percentage rows for income and expenses. The first percentage is
+unavailable because it has no preceding displayed month. Model output cannot
+fabricate these values, and the same table appears in stored web HTML, email HTML,
+and text conversion.
+
+### Monthly comparison data flow
+
+Report configuration starts in `reports[]` in `schemas/config.schema.json`, where
+account scope, `includeUnannotated`, window, and schedule are defined.
+`src/intelligence/report-facts.ts` loads facts with `historyStart`,
+`MAX_HISTORY_ROWS`, and account scope through `createTransactionWebListFilters`.
+The report taxonomy policy in `src/intelligence/report-taxonomy-policy.ts`, stored
+per report in `intelligence_taxonomy_policies`, applies semantic treatments; only
+facts whose treatment is `reportable` enter analysis. `src/intelligence/report-analysis.ts`
+builds `chartPeriods` and aggregates each month's `incomeCents` and
+`expenseCents`. `src/intelligence/charts.ts` renders `monthly-comparison`; its
+cumulative balance and least-squares regressions are pure functions of
+`analysis.chart`. Finally, `buildMonthlyComparisonTable` in the report runner
+appends the deterministic table to `bodyHtml` before `sanitizeReportBodyHtml`.
 
 Category and label charts select the largest parent series over the displayed
 window and combine the remainder as `Others`. Child breakdowns belong in the

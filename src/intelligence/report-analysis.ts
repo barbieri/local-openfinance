@@ -1,6 +1,11 @@
 import type { DatabaseSync } from 'node:sqlite';
 import type { ResolvedConfig } from '../types.js';
-import { addDaysToLocalDateKey, type LocalDatePeriod, shiftLocalDateKeyMonths } from './period.js';
+import {
+  addDaysToLocalDateKey,
+  isCompleteCalendarMonth,
+  type LocalDatePeriod,
+  shiftLocalDateKeyMonths,
+} from './period.js';
 import {
   changeRatio,
   daysBetween,
@@ -58,21 +63,25 @@ export function buildReportAnalysis(input: BuildReportAnalysisInput): ReportAnal
 export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): ReportAnalysisPacket {
   const { resolved, scope } = input;
   const cadence = reportCadence(scope);
+  const monthlyProfileComparable = cadence !== 'monthly' || isCompleteCalendarMonth(scope.period);
+  const comparisonBasis =
+    cadence === 'monthly' && monthlyProfileComparable ? 'calendar-month' : 'equal-length';
+  const previousPeriod = previousPeriodFor(scope.period, cadence);
+  const historyStart = addDaysToLocalDateKey(
+    scope.period.start,
+    -resolved.config.intelligence.rareLookbackYears * 366,
+  );
   const loaded = loadReportFacts({
     ...input,
-    historyStart: addDaysToLocalDateKey(
-      scope.period.start,
-      -resolved.config.intelligence.rareLookbackYears * 366,
-    ),
+    historyStart: previousPeriod.start < historyStart ? previousPeriod.start : historyStart,
   });
   const analyticalFacts = loaded.facts.filter((fact) => fact.treatment === 'reportable');
   const currentFacts = within(analyticalFacts, scope.period);
-  const previousPeriod = previousPeriodFor(scope.period, cadence);
   const currency = resolveAnalysisCurrency(currentFacts, analyticalFacts);
   const currencyFacts = analyticalFacts.filter((fact) => fact.currency === currency);
   const currentCurrencyFacts = within(currencyFacts, scope.period);
   const previousCurrencyFacts = within(currencyFacts, previousPeriod);
-  const profiles = buildProfiles(currencyFacts, scope.period, cadence);
+  const profiles = buildProfiles(currencyFacts, scope.period, cadence, monthlyProfileComparable);
   const candidates = buildCandidates({
     facts: currencyFacts,
     currentFacts: currentCurrencyFacts,
@@ -99,7 +108,7 @@ export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): Repo
     };
   });
   const analysis: ReportAnalysis = {
-    period: { ...scope.period, cadence },
+    period: { ...scope.period, cadence, comparisonBasis },
     language: scope.report.language,
     currency,
     summary: {
@@ -190,22 +199,25 @@ function reportCadence(scope: ReportQueryScope): ReportCadence {
 }
 
 function previousPeriodFor(period: LocalDatePeriod, cadence: ReportCadence): LocalDatePeriod {
-  if (cadence === 'monthly') {
+  if (cadence === 'monthly' && isCompleteCalendarMonth(period)) {
     const start = shiftLocalDateKeyMonths(period.start, -1);
     return { start, end: addDaysToLocalDateKey(period.start, -1) };
   }
   const length = daysBetween(period.start, period.end) + 1;
   return {
     start: addDaysToLocalDateKey(period.start, -length),
-    end: addDaysToLocalDateKey(period.end, -length),
+    end: addDaysToLocalDateKey(period.start, -1),
   };
 }
 
 function chartPeriods(period: LocalDatePeriod, cadence: ReportCadence): readonly LocalDatePeriod[] {
   if (cadence === 'monthly') {
     return Array.from({ length: 12 }, (_, index) => {
-      const start = shiftLocalDateKeyMonths(period.start, index - 11);
-      return { start, end: addDaysToLocalDateKey(shiftLocalDateKeyMonths(start, 1), -1) };
+      const monthStart = shiftLocalDateKeyMonths(period.end, index - 11);
+      const monthEnd = addDaysToLocalDateKey(shiftLocalDateKeyMonths(monthStart, 1), -1);
+      const start =
+        period.start > monthStart && period.start <= monthEnd ? period.start : monthStart;
+      return { start, end: index === 11 ? period.end : monthEnd };
     });
   }
   const count = cadence === 'daily' ? 30 : 8;

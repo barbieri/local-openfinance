@@ -3,15 +3,19 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   getIntelligenceRun,
   getIntelligenceRunByDueKey,
+  getIntelligenceRunChart,
   insertIntelligenceRun,
   listIntelligenceRunChartNames,
   listIntelligenceRunModelCalls,
   listIntelligenceRuns,
   readIntelligenceMemory,
+  saveIntelligenceRunChart,
 } from '../src/db/intelligence.js';
 import { migrateDatabase } from '../src/db/migrate.js';
+import { reportChartAltText } from '../src/intelligence/charts.js';
 import { buildInvestmentReportSnapshot } from '../src/intelligence/investment-report-snapshot.js';
 import {
+  type DeliverReport,
   DueReportAlreadyRunError,
   executeReport,
   type GenerateReportWithAgent,
@@ -300,6 +304,9 @@ describe('report runner', () => {
     );
     expect(readIntelligenceMemory(db, 'weekly').markdown).toContain('Stable');
     expect(readIntelligenceMemory(db, 'weekly').markdown).not.toContain('Would change');
+    expect(JSON.parse(replaced.briefingJson)).toMatchObject({
+      deliveryMetadata: { reportName: 'Weekly', dateStyle: 'weekly' },
+    });
   });
 
   it('removes terminal and header control bytes from the generated subject before persistence', async () => {
@@ -453,6 +460,233 @@ describe('report runner', () => {
       estimatedCostMicrousd: 110,
     });
     expect(listIntelligenceRuns(db, 'weekly')).toHaveLength(1);
+  });
+
+  it('retries with the stored report name, locale, and window style after config changes', async () => {
+    const db = openDb();
+    const sendReport = { ...report, send: 'always' as const };
+    const sendResolved = { ...resolved, config: { ...resolved.config, reports: [sendReport] } };
+    const generator = vi.fn(generateReport);
+    const input = {
+      db,
+      resolved: sendResolved,
+      reportId: 'weekly',
+      period: { start: '2026-08-10', end: '2026-08-16' },
+      timeZone: 'UTC',
+      triggerKind: 'due' as const,
+      dueKey: 'weekly:2026-08-17',
+      send: true,
+      dryRun: false,
+    };
+    await expect(
+      executeReport(input, generator, async () => {
+        throw new Error('SMTP unavailable');
+      }),
+    ).rejects.toThrow('SMTP unavailable');
+    const changedReport: ResolvedReportConfig = {
+      ...sendReport,
+      name: 'Renamed',
+      window: { kind: 'last-complete-month' },
+    };
+    const changedResolved: ResolvedConfig = {
+      ...sendResolved,
+      config: { ...sendResolved.config, language: 'en-US', reports: [changedReport] },
+    };
+    const delivery = vi.fn(async (_email: Parameters<DeliverReport>[0]) => ({
+      sent: true,
+      message: {},
+    }));
+
+    const retried = await executeReport(
+      { ...input, resolved: changedResolved },
+      generator,
+      delivery,
+    );
+
+    expect(generator).toHaveBeenCalledOnce();
+    expect(retried.reportId).toBe('weekly');
+    const content = delivery.mock.calls[0]?.[0].content;
+    expect(content?.reportName).toBe('Weekly');
+    expect(content?.language).toBe('pt-BR');
+    expect(content?.dateStyle).toBe('weekly');
+    expect(content?.period).toEqual({ start: '2026-08-10', end: '2026-08-16' });
+    expect(content?.charts.find((chart) => chart.name === 'cashflow')?.altText).toBe(
+      reportChartAltText('cashflow', 'pt-BR'),
+    );
+  });
+
+  it('uses legacy briefing locale and cadence when delivery metadata is absent', async () => {
+    const db = openDb();
+    const sendReport = { ...report, send: 'always' as const };
+    const sendResolved = { ...resolved, config: { ...resolved.config, reports: [sendReport] } };
+    const input = {
+      db,
+      resolved: sendResolved,
+      reportId: 'weekly',
+      period: { start: '2026-08-10', end: '2026-08-16' },
+      timeZone: 'UTC',
+      triggerKind: 'due' as const,
+      dueKey: 'weekly:2026-08-17',
+      send: false,
+      dryRun: false,
+    };
+    const generated = await executeReport(input, generateReport);
+    db.prepare(
+      `UPDATE intelligence_runs
+       SET briefing_json = json_remove(briefing_json, '$.deliveryMetadata')
+       WHERE id = ?`,
+    ).run(generated.run?.id ?? '');
+    const changedReport: ResolvedReportConfig = {
+      ...sendReport,
+      name: 'Renamed',
+      window: { kind: 'last-complete-month' },
+    };
+    const changedResolved: ResolvedConfig = {
+      ...sendResolved,
+      config: { ...sendResolved.config, language: 'en-US', reports: [changedReport] },
+    };
+    const delivery = vi.fn(async (_email: Parameters<DeliverReport>[0]) => ({
+      sent: true,
+      message: {},
+    }));
+
+    await executeReport(
+      { ...input, resolved: changedResolved, send: true },
+      generateReport,
+      delivery,
+    );
+
+    const content = delivery.mock.calls[0]?.[0].content;
+    expect(content?.reportName).toBe('weekly');
+    expect(content?.language).toBe('pt-BR');
+    expect(content?.dateStyle).toBe('weekly');
+  });
+
+  it('retries a monthly due email with its stored comparison chart', async () => {
+    const db = openDb();
+    const monthlyReport: ResolvedReportConfig = {
+      ...report,
+      id: 'monthly',
+      name: 'Monthly',
+      schedule: { kind: 'monthly', day: 8, time: '08:00' },
+      window: { kind: 'last-complete-month' },
+      send: 'always',
+    };
+    const monthlyResolved = {
+      ...resolved,
+      config: { ...resolved.config, reports: [monthlyReport] },
+    };
+    const generator = vi.fn(generateReport);
+    const failingDelivery = vi.fn(async () => {
+      throw new Error('SMTP unavailable');
+    });
+    const input = {
+      db,
+      resolved: monthlyResolved,
+      reportId: 'monthly',
+      period: { start: '2026-08-01', end: '2026-08-31' },
+      timeZone: 'UTC',
+      triggerKind: 'due' as const,
+      dueKey: 'monthly:2026-09-08',
+      send: true,
+      dryRun: false,
+    };
+
+    await expect(executeReport(input, generator, failingDelivery)).rejects.toThrow(
+      'SMTP unavailable',
+    );
+    const stored = getIntelligenceRunByDueKey(db, 'monthly', input.dueKey);
+    expect(stored).not.toBeNull();
+    expect(listIntelligenceRunChartNames(db, stored?.id ?? '')).toContain('monthly-comparison');
+    expect(listIntelligenceRunChartNames(db, stored?.id ?? '')).not.toContain('cashflow');
+
+    const successfulDelivery = vi.fn(async () => ({ sent: true, message: {} }));
+    const retried = await executeReport(input, generator, successfulDelivery);
+
+    expect(generator).toHaveBeenCalledOnce();
+    expect(successfulDelivery).toHaveBeenCalledWith(
+      expect.objectContaining({
+        content: expect.objectContaining({
+          charts: expect.arrayContaining([
+            expect.objectContaining({ name: 'monthly-comparison' }),
+            expect.objectContaining({ name: 'categories' }),
+            expect.objectContaining({ name: 'labels' }),
+          ]),
+        }),
+      }),
+    );
+    expect(retried.emailSent).toBe(true);
+    expect(retried.run?.emailSentAt).not.toBeNull();
+  });
+
+  it('attaches both stored primary charts when retrying a due email', async () => {
+    const db = openDb();
+    const sendReport = { ...report, send: 'always' as const };
+    const sendResolved = { ...resolved, config: { ...resolved.config, reports: [sendReport] } };
+    const input = {
+      db,
+      resolved: sendResolved,
+      reportId: 'weekly',
+      period: { start: '2026-08-10', end: '2026-08-16' },
+      timeZone: 'UTC',
+      triggerKind: 'due' as const,
+      dueKey: 'weekly:2026-08-17',
+      send: false,
+      dryRun: false,
+    };
+    const generated = await executeReport(input, generateReport);
+    const runId = generated.run?.id ?? '';
+    const cashflow = getIntelligenceRunChart(db, runId, 'cashflow');
+    expect(cashflow?.mimeType).toBe('image/png');
+    if (!cashflow) throw new Error('Expected stored cashflow chart');
+    saveIntelligenceRunChart(db, {
+      runId,
+      name: 'monthly-comparison',
+      mimeType: 'image/png',
+      bytes: cashflow.bytes,
+    });
+    const delivery = vi.fn(async () => ({ sent: true, message: {} }));
+
+    const retried = await executeReport({ ...input, send: true }, generateReport, delivery);
+
+    expect(retried.charts.map((chart) => chart.name)).toEqual([
+      'monthly-comparison',
+      'cashflow',
+      'categories',
+      'labels',
+      'investments-type',
+      'investments-subtype',
+      'investments-code',
+    ]);
+    expect(delivery).toHaveBeenCalledOnce();
+  });
+
+  it('rejects due delivery when neither primary chart remains stored', async () => {
+    const db = openDb();
+    const sendReport = { ...report, send: 'always' as const };
+    const sendResolved = { ...resolved, config: { ...resolved.config, reports: [sendReport] } };
+    const input = {
+      db,
+      resolved: sendResolved,
+      reportId: 'weekly',
+      period: { start: '2026-08-10', end: '2026-08-16' },
+      timeZone: 'UTC',
+      triggerKind: 'due' as const,
+      dueKey: 'weekly:2026-08-17',
+      send: false,
+      dryRun: false,
+    };
+    const generated = await executeReport(input, generateReport);
+    db.prepare('DELETE FROM intelligence_run_charts WHERE run_id = ? AND name = ?').run(
+      generated.run?.id ?? '',
+      'cashflow',
+    );
+    const delivery = vi.fn(async () => ({ sent: true, message: {} }));
+
+    await expect(executeReport({ ...input, send: true }, generateReport, delivery)).rejects.toThrow(
+      'Stored primary chart is unavailable for report delivery.',
+    );
+    expect(delivery).not.toHaveBeenCalled();
   });
 
   it('sends alerts for material investment changes without counting each dimension', async () => {

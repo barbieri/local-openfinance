@@ -19,6 +19,7 @@ export function buildProfiles(
   facts: readonly ReportFact[],
   period: LocalDatePeriod,
   cadence: ReportCadence,
+  comparisonAllowed: boolean,
 ): readonly ReportProfile[] {
   const groups = new Map<string, { taxonomy: ReportTaxonomy; facts: ReportFact[] }>();
   for (const fact of facts) {
@@ -30,7 +31,9 @@ export function buildProfiles(
       groups.set(key, group);
     }
   }
-  return [...groups.entries()].map(([key, group]) => buildProfile(key, group, period, cadence));
+  return [...groups.entries()].map(([key, group]) =>
+    buildProfile(key, group, period, cadence, comparisonAllowed),
+  );
 }
 
 function buildProfile(
@@ -38,6 +41,7 @@ function buildProfile(
   group: { readonly taxonomy: ReportTaxonomy; readonly facts: readonly ReportFact[] },
   period: LocalDatePeriod,
   cadence: ReportCadence,
+  comparisonAllowed: boolean,
 ): ReportProfile {
   const historical = group.facts.filter((fact) => fact.date < period.start);
   const current = within(group.facts, period);
@@ -46,7 +50,7 @@ function buildProfile(
   const profileStats = stats(
     valuesForBasis(historical, basis, addDaysToLocalDateKey(period.start, -1)),
   );
-  const comparable = isComparable(cadence, basis, current);
+  const comparable = comparisonAllowed && isComparable(cadence, basis, current);
   const currentValue = comparable ? valueForCurrent(current, basis) : null;
   const comparison = profileComparison(currentValue, profileStats);
   const months = [...new Set(historical.map((fact) => fact.date.slice(0, 7)))].toSorted();

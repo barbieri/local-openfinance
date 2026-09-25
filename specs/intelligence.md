@@ -291,6 +291,12 @@ opens an SMTP transport.
 A due run is persisted before SMTP delivery. Its `email_sent_at` remains null
 until SMTP succeeds, so a later `run --due --send` reuses the stored prose and
 charts instead of regenerating or permanently skipping a failed delivery.
+The stored briefing also captures the report name and date style used for email;
+retry reads those with the original analysis language, even if the current
+configuration changed. Legacy briefings without delivery metadata use the
+stored analysis cadence and language, plus the stable report id as the name.
+If those legacy fields are missing, retry uses ISO dates and the current
+configured language.
 Model-authored HTML cannot embed remote images; the email renderer adds only
 the stored CID charts.
 

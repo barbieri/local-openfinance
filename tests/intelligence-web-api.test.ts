@@ -122,6 +122,12 @@ describe('intelligence web API', () => {
     });
     saveIntelligenceRunChart(db, {
       runId: 'run-1',
+      name: 'monthly-comparison',
+      mimeType: 'image/png',
+      bytes: Uint8Array.from([1, 2, 3]),
+    });
+    saveIntelligenceRunChart(db, {
+      runId: 'run-1',
       name: 'investments-type',
       mimeType: 'image/png',
       bytes: Uint8Array.from([1, 2, 3]),
@@ -157,12 +163,18 @@ describe('intelligence web API', () => {
     expect(detailBody.run.chartNames).toEqual([
       'balance',
       'investments-type',
+      'monthly-comparison',
       'remote-model-output',
     ]);
     expect(detailBody.run.charts).toEqual([
       { name: 'balance', mimeType: 'image/png', dataUrl: 'data:image/png;base64,AQID' },
       {
         name: 'investments-type',
+        mimeType: 'image/png',
+        dataUrl: 'data:image/png;base64,AQID',
+      },
+      {
+        name: 'monthly-comparison',
         mimeType: 'image/png',
         dataUrl: 'data:image/png;base64,AQID',
       },

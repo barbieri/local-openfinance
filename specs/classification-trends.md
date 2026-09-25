@@ -66,8 +66,11 @@ clustered-event ratio, and a bounded set of representative transactions.
 
 Period differences are available only when the report period matches the
 profile basis. A weekly report must not compare a partial week with a monthly
-average. Every published comparison includes both the signed currency change
-and the percentage change.
+average. Monthly report profiles require one complete calendar month for a
+current-period baseline comparison; multi-month and partial-month ad-hoc
+windows keep their raw totals but mark the comparison unavailable. Every
+published comparison includes both the signed currency change and the
+percentage change.
 
 ## Transaction semantics
 

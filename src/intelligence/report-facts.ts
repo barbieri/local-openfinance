@@ -76,7 +76,7 @@ function loadScopedRows(input: LoadReportFactsInput): readonly EnrichedTransacti
       startDate: input.historyStart,
       endDate: scope.period.end,
       transfers: 'all',
-      useCreditPurchaseDate: true,
+      useCreditPurchaseDate: false,
     }),
     {
       limit: MAX_HISTORY_ROWS,

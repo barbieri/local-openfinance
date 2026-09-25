@@ -124,7 +124,7 @@ export function buildInvestmentTableColumns(input: {
     h.display({
       id: 'rate',
       header: () => input.t('columns.rate'),
-      enableSorting: true,
+      ...numericColumn<Record<string, unknown>>(),
       cell: ({ row }) => investmentRateLabel(row.original) ?? '—',
     }),
     h.display({

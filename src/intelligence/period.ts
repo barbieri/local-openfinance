@@ -29,6 +29,14 @@ export function shiftLocalDateKeyMonths(dateKey: string, months: number): string
   return formatDateKey(date);
 }
 
+export function isCompleteCalendarMonth(period: LocalDatePeriod): boolean {
+  const monthStart = `${period.start.slice(0, 7)}-01`;
+  return (
+    period.start === monthStart &&
+    period.end === addDaysToLocalDateKey(shiftLocalDateKeyMonths(monthStart, 1), -1)
+  );
+}
+
 export function monthKeyFromDateKey(dateKey: string): string {
   return dateKey.slice(0, 7);
 }

@@ -113,7 +113,10 @@ export type ReportCandidate = {
 };
 
 export type ReportAnalysis = {
-  readonly period: LocalDatePeriod & { readonly cadence: ReportCadence };
+  readonly period: LocalDatePeriod & {
+    readonly cadence: ReportCadence;
+    readonly comparisonBasis: 'calendar-month' | 'equal-length';
+  };
   readonly language: string;
   readonly currency: string;
   readonly summary: {
