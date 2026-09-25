@@ -94,6 +94,7 @@ const GENERAL_INTELLIGENCE_TOOLS = {
           period: scope.period,
           kind: input.kind,
           id: input.id,
+          useCreditPurchaseDate: scope.useCreditPurchaseDate,
         }),
       };
     },

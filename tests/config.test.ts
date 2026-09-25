@@ -30,6 +30,7 @@ describe('loadConfig', () => {
     expect(resolved.configHash).toHaveLength(64);
     expect(resolved.config.model.model).toBe('gpt-5.6-luna');
     expect(resolved.config.report.includeUnannotated).toBe(true);
+    expect(resolved.config.report.useCreditPurchaseDate).toBe(false);
     expect(resolved.config.intelligence.minReportedItemAmountCents).toBe(10_000);
     expect(resolved.config.intelligence.suggestionConfidenceThreshold).toBe(0.82);
     expect(resolved.config.chatModel).toBeUndefined();
@@ -93,6 +94,17 @@ describe('loadConfig', () => {
     );
     expect(resolved.config.reports).toEqual([]);
     expect(resolved.config.notify.smtp).toBeUndefined();
+  });
+
+  it('resolves the credit-purchase date basis when explicitly enabled', async () => {
+    const configPath = await writeTempConfig('purchase-date-config.json', {
+      report: { useCreditPurchaseDate: true },
+      model: { provider: 'openai', model: 'gpt-test' },
+    });
+
+    const resolved = await loadConfig(configPath);
+
+    expect(resolved.config.report.useCreditPurchaseDate).toBe(true);
   });
 
   it('exposes structured validation errors for invalid configs', async () => {
@@ -264,6 +276,7 @@ const defaultedExampleFields: readonly {
     value: DEFAULT_ANNOTATION.pushCategoriesUpstream,
   },
   { path: ['report', 'includeUnannotated'], value: DEFAULT_REPORT.includeUnannotated },
+  { path: ['report', 'useCreditPurchaseDate'], value: DEFAULT_REPORT.useCreditPurchaseDate },
   {
     path: ['intelligence', 'minReportedItemAmountCents'],
     value: DEFAULT_INTELLIGENCE.minReportedItemAmountCents,

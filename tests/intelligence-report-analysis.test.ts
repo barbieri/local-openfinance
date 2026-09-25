@@ -686,6 +686,7 @@ describe('deterministic report analysis', () => {
         period: { start: '2026-08-10', end: '2026-08-16' },
       });
 
+      expect(scope.useCreditPurchaseDate).toBe(useCreditPurchaseDate);
       const packet = buildReportAnalysisPacket({ db, resolved, scope, policy: { decisions: [] } });
 
       expect(packet.reportableFacts.some((fact) => fact.id === 'purchase-date')).toBe(included);

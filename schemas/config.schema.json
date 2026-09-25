@@ -97,6 +97,10 @@
         "includeUnannotated": {
           "description": "When false, only entries with a local annotation are sent to the model. Defaults to true when omitted.",
           "type": "boolean"
+        },
+        "useCreditPurchaseDate": {
+          "description": "When true, credit-card purchases use their purchase date instead of occurred_at. Defaults to false when omitted.",
+          "type": "boolean"
         }
       }
     },

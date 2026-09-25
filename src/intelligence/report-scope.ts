@@ -24,6 +24,7 @@ export type ReportQueryScope = {
   readonly report: ResolvedReportConfig;
   readonly period: LocalDatePeriod;
   readonly timeZone: string;
+  readonly useCreditPurchaseDate: boolean;
 };
 
 export type ReportBriefing = {
@@ -60,6 +61,7 @@ export function resolveReportQueryScope(
     report,
     period: options.period ?? resolveReportWindowPeriod(report.window, today),
     timeZone,
+    useCreditPurchaseDate: resolved.config.report.useCreditPurchaseDate,
   };
 }
 
@@ -98,7 +100,7 @@ export function baseReportTransactionFilters(scope: ReportQueryScope) {
     startDate: scope.period.start,
     endDate: scope.period.end,
     transfers: 'hide',
-    useCreditPurchaseDate: true,
+    useCreditPurchaseDate: scope.useCreditPurchaseDate,
   });
 }
 

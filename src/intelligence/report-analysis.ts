@@ -91,6 +91,7 @@ export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): Repo
     currency,
     publicBaseUrl: resolved.config.web.publicBaseUrl,
     floorCents: resolved.config.intelligence.minReportedItemAmountCents,
+    useCreditPurchaseDate: scope.useCreditPurchaseDate,
   });
   const mustReport = selectMustReport(candidates);
   const relevantProfiles = selectAnalysisProfiles(profiles, candidates, mustReport);

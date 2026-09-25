@@ -36,7 +36,8 @@ document per named report id, edited on `#/reports/<id>/memory`.
 
 Named reports live in config `reports[]` with an id, name, schedule, window,
 prompt list, and optional delivery, model, or filter overrides. Singular
-`report` stays as shared entry filters. See `specs/intelligence.md`.
+`report` stays as shared entry filters. See `specs/intelligence.md`. `report.useCreditPurchaseDate` defaults to `false`; when enabled,
+credit-card purchases use their purchase date instead of `occurred_at`.
 
 Each report has a stable supported `language` (`en-US` or `pt-BR`, default `pt-BR`) which controls
 prose, translated taxonomy names, dates, numbers, charts, and email period

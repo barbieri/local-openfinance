@@ -1,4 +1,5 @@
 import { DatabaseSync } from 'node:sqlite';
+import { decompressFromEncodedURIComponent } from 'lz-string';
 import { describe, expect, it } from 'vitest';
 import { loadConfig } from '../src/config/load-config.js';
 import { linkAccounts } from '../src/db/account-links.js';
@@ -50,6 +51,7 @@ async function scopedConfig(
   overrides: {
     readonly includeUnannotated?: boolean | undefined;
     readonly accountIds?: readonly string[] | undefined;
+    readonly useCreditPurchaseDate?: boolean | undefined;
   } = {},
 ): Promise<ResolvedConfig> {
   const resolved = await loadConfig('examples/expenses-config.json');
@@ -61,6 +63,11 @@ async function scopedConfig(
     ...resolved,
     config: {
       ...resolved.config,
+      report: {
+        ...resolved.config.report,
+        useCreditPurchaseDate:
+          overrides.useCreditPurchaseDate ?? resolved.config.report.useCreditPurchaseDate,
+      },
       reports: [
         {
           ...weekly,
@@ -105,6 +112,7 @@ describe('intelligence tools', () => {
       report: { id: 'weekly' },
       period: { start: '2026-08-10', end: '2026-08-16' },
       timeZone: 'UTC',
+      useCreditPurchaseDate: false,
     });
   });
 
@@ -255,32 +263,50 @@ describe('intelligence tools', () => {
     expect(() => executeIntelligenceTool(ctx, 'unknown', 'memory', {})).toThrow(/Report not found/);
   });
 
-  it('builds exact category period links without accepting unknown taxonomy ids', async () => {
-    const db = openDb();
-    const resolved = await scopedConfig();
-    db.prepare(
-      `INSERT INTO annotation_categories (id, name, created_at)
+  it.each([
+    { useCreditPurchaseDate: false, expectedDisplay: { category: 'full', labels: 'full' } },
+    {
+      useCreditPurchaseDate: true,
+      expectedDisplay: { category: 'full', labels: 'full', date: 'credit-purchase' },
+    },
+  ])(
+    'builds exact category period links for useCreditPurchaseDate=$useCreditPurchaseDate',
+    async ({ useCreditPurchaseDate, expectedDisplay }) => {
+      const db = openDb();
+      const resolved = await scopedConfig({ useCreditPurchaseDate });
+      db.prepare(
+        `INSERT INTO annotation_categories (id, name, created_at)
        VALUES ('food', 'Food', '2026-08-12T00:00:00.000Z')`,
-    ).run();
-    const ctx = {
-      db,
-      resolved,
-      now: new Date('2026-08-21T12:00:00.000Z'),
-      timeZone: 'UTC',
-    };
+      ).run();
+      const ctx = {
+        db,
+        resolved,
+        now: new Date('2026-08-21T12:00:00.000Z'),
+        timeZone: 'UTC',
+      };
 
-    const response = executeIntelligenceTool(ctx, 'weekly', 'report_link', {
-      kind: 'category',
-      id: 'food',
-    }) as { readonly result: { readonly href: string } };
-    expect(response.result.href).toMatch(/^#\/transactions\/s=/u);
-    expect(() =>
-      executeIntelligenceTool(ctx, 'weekly', 'report_link', {
+      const response = executeIntelligenceTool(ctx, 'weekly', 'report_link', {
         kind: 'category',
-        id: 'missing',
-      }),
-    ).toThrow('category not found');
-  });
+        id: 'food',
+      }) as { readonly result: { readonly href: string } };
+      expect(response.result.href).toMatch(/^#\/transactions\/s=/u);
+      const encoded = response.result.href.split('/s=')[1];
+      const decoded = encoded ? decompressFromEncodedURIComponent(encoded) : null;
+      expect(decoded).not.toBeNull();
+      if (!decoded) throw new Error('Report link state did not decode');
+      const state: unknown = JSON.parse(decoded);
+      if (!state || typeof state !== 'object' || !('display' in state)) {
+        throw new Error('Report link state did not contain display options');
+      }
+      expect(state.display).toEqual(expectedDisplay);
+      expect(() =>
+        executeIntelligenceTool(ctx, 'weekly', 'report_link', {
+          kind: 'category',
+          id: 'missing',
+        }),
+      ).toThrow('category not found');
+    },
+  );
 
   it('rejects suggestion-only anchors from all transaction history tools', async () => {
     const db = openDb();
@@ -463,15 +489,20 @@ describe('intelligence tools', () => {
     expect(response.result.truncated).toBe(true);
   });
 
-  it('uses credit-card purchase dates for historical aggregate bounds', async () => {
-    const db = openDb();
-    const resolved = await scopedConfig();
-    insertTransaction(db, 'purchase-date-anchor', '2026-08-12T12:00:00.000Z', -50_000);
-    db.prepare(
-      `UPDATE transactions SET category_id = 'food' WHERE id = 'purchase-date-anchor'`,
-    ).run();
-    db.prepare(
-      `INSERT INTO transactions (
+  it.each([
+    { useCreditPurchaseDate: false, expectedFirstDate: '2026-07-20T12:00:00.000Z' },
+    { useCreditPurchaseDate: true, expectedFirstDate: '2026-06-01' },
+  ])(
+    'uses the configured date basis for historical aggregate bounds when useCreditPurchaseDate=$useCreditPurchaseDate',
+    async ({ useCreditPurchaseDate, expectedFirstDate }) => {
+      const db = openDb();
+      const resolved = await scopedConfig({ useCreditPurchaseDate });
+      insertTransaction(db, 'purchase-date-anchor', '2026-08-12T12:00:00.000Z', -50_000);
+      db.prepare(
+        `UPDATE transactions SET category_id = 'food' WHERE id = 'purchase-date-anchor'`,
+      ).run();
+      db.prepare(
+        `INSERT INTO transactions (
          id, account_id, occurred_at, amount_cents, currency, description, category_id,
          raw_json, synced_at
        ) VALUES (
@@ -480,29 +511,30 @@ describe('intelligence tools', () => {
          '{"creditCardMetadata":{"purchaseDate":"2026-06-01"}}',
          '2026-08-16T00:00:00.000Z'
        )`,
-    ).run();
+      ).run();
 
-    const response = executeIntelligenceTool(
-      {
-        db,
-        resolved,
-        now: new Date('2026-08-21T12:00:00.000Z'),
-        timeZone: 'UTC',
-      },
-      'weekly',
-      'aggregate_classification_history',
-      { transactionId: 'purchase-date-anchor', dimension: 'category' },
-    ) as {
-      readonly result: { readonly rows: readonly Record<string, unknown>[] };
-    };
-    expect(response.result.rows).toEqual([
-      expect.objectContaining({
-        key: 'food',
-        firstDate: '2026-06-01',
-        lastDate: '2026-08-12T12:00:00.000Z',
-      }),
-    ]);
-  });
+      const response = executeIntelligenceTool(
+        {
+          db,
+          resolved,
+          now: new Date('2026-08-21T12:00:00.000Z'),
+          timeZone: 'UTC',
+        },
+        'weekly',
+        'aggregate_classification_history',
+        { transactionId: 'purchase-date-anchor', dimension: 'category' },
+      ) as {
+        readonly result: { readonly rows: readonly Record<string, unknown>[] };
+      };
+      expect(response.result.rows).toEqual([
+        expect.objectContaining({
+          key: 'food',
+          firstDate: expectedFirstDate,
+          lastDate: '2026-08-12T12:00:00.000Z',
+        }),
+      ]);
+    },
+  );
 
   it('uses local annotation subcategory before Open Finance category for history', async () => {
     const db = openDb();

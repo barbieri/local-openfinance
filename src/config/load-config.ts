@@ -37,6 +37,7 @@ export const DEFAULT_ANNOTATION = {
 export const DEFAULT_REPORT = {
   accountIds: [] as const,
   includeUnannotated: true,
+  useCreditPurchaseDate: false,
 } as const;
 
 export const DEFAULT_INTELLIGENCE = {
@@ -135,6 +136,8 @@ function resolveConfigPaths(config: AppConfig, configPath: string): ResolvedAppC
     report: {
       accountIds: config.report.accountIds ?? DEFAULT_REPORT.accountIds,
       includeUnannotated: config.report.includeUnannotated ?? DEFAULT_REPORT.includeUnannotated,
+      useCreditPurchaseDate:
+        config.report.useCreditPurchaseDate ?? DEFAULT_REPORT.useCreditPurchaseDate,
     },
     reports: (config.reports ?? []).map((report) => resolveReport(report, config, configPath)),
     web: {

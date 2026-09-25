@@ -8,7 +8,7 @@ import {
   parseTransactionMerchantDetail,
   resolvePayeeMccName,
 } from '../openfinance/transaction-metadata.js';
-import { resolveLocalTimeZone, toLocalDateKey } from '../utils/local-date.js';
+import { resolveLocalTimeZone } from '../utils/local-date.js';
 import { resolveFlexibleLocalDateRange } from '../utils/local-date-range.js';
 import { VISIBLE_ACCOUNT_TRANSACTIONS_WHERE } from './account-links.js';
 import {
@@ -31,6 +31,7 @@ import {
 import type { DeletionMetadata } from './entry-deletion.js';
 import { parseGroupByFields } from './grouped-list.js';
 import { getTransactionCategoryOverride } from './transaction-category-overrides.js';
+import { resolveTransactionDateBasis } from './transaction-date-basis.js';
 import {
   normalizeTransactionAmountInAccountCurrencyCents,
   resolveTransactionForeignAmountFields,
@@ -305,11 +306,12 @@ export function enrichTransactionRow(
   const billLink =
     options.billLink === undefined ? loadCreditCardBillLink(db, row.id) : options.billLink;
   const useCreditPurchaseDate = options.useCreditPurchaseDate === true;
-  const displayOccurredAt = resolveDisplayOccurredAt(
-    row.occurred_at,
-    creditCardParsed.purchase_date,
+  const dateBasis = resolveTransactionDateBasis({
+    occurredAt: row.occurred_at,
+    purchaseDate: creditCardParsed.purchase_date,
     useCreditPurchaseDate,
-  );
+    timeZone,
+  });
   const payeeMccName = resolvePayeeMccName(
     creditCardParsed.payee_mcc,
     options.locale,
@@ -351,8 +353,8 @@ export function enrichTransactionRow(
     account_display_name: accountDisplayName,
     account_group_key: row.account_id,
     account_group_label: accountDisplayName,
-    local_date: toLocalDateKey(displayOccurredAt, timeZone),
-    display_occurred_at: displayOccurredAt,
+    local_date: dateBasis.localDate,
+    display_occurred_at: dateBasis.displayOccurredAt,
     installment_number: installmentMetadata.installmentNumber,
     total_installments: installmentMetadata.totalInstallments,
     merchant_detail: hasMerchantDetail(merchantDetail) ? merchantDetail : null,
@@ -742,17 +744,6 @@ export function loadTransactionRowById(
     .get(transactionId) as Record<string, unknown> | undefined;
 
   return row ? mapTransactionRow(row) : null;
-}
-
-function resolveDisplayOccurredAt(
-  occurredAt: string,
-  purchaseDate: string | null,
-  useCreditPurchaseDate: boolean,
-): string {
-  if (useCreditPurchaseDate && purchaseDate) {
-    return purchaseDate;
-  }
-  return occurredAt;
 }
 
 function hasMerchantDetail(detail: TransactionMerchantDetail): boolean {

@@ -59,7 +59,7 @@ const resolved: ResolvedConfig = {
       similarityThreshold: 0.82,
       pushCategoriesUpstream: false,
     },
-    report: { accountIds: [], includeUnannotated: true },
+    report: { accountIds: [], includeUnannotated: true, useCreditPurchaseDate: false },
     reports: [report],
     web: { publicBaseUrl: undefined },
     intelligence: {

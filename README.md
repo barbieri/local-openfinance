@@ -412,6 +412,7 @@ transcripts).
 |-------|-------------|
 | `accountIds` | Optional account uuid allow-list. |
 | `includeUnannotated` | When `false`, only annotated entries are sent to the model. Default: `true`. |
+| `useCreditPurchaseDate` | When `true`, date credit-card purchases by purchase date instead of `occurred_at`. Default: `false`. |
 
 ### `reports`
 

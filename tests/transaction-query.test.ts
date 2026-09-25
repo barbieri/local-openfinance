@@ -149,6 +149,46 @@ describe('listEnrichedTransactionsPage', () => {
     ).toEqual(['tx-june-1', 'tx-june-2']);
   });
 
+  it('includes start-day credit purchases while retaining occurred-at fallback bounds', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    seedTransaction(db, {
+      id: 'purchase-on-start',
+      occurredAt: '2026-07-10T12:00:00.000Z',
+      merchantName: 'Card purchase',
+      description: 'Purchase date matches the lower bound',
+      amountCents: -1000,
+      rawJson: { creditCardMetadata: { purchaseDate: '2026-06-01' } },
+    });
+    seedTransaction(db, {
+      id: 'fallback-on-start',
+      occurredAt: '2026-06-01T03:00:00.000Z',
+      merchantName: 'Fallback match',
+      description: 'Occurred at matches the lower bound',
+      amountCents: -2000,
+    });
+    seedTransaction(db, {
+      id: 'fallback-before-start',
+      occurredAt: '2026-06-01T02:59:59.999Z',
+      merchantName: 'Fallback before',
+      description: 'Occurred at precedes the lower bound',
+      amountCents: -3000,
+    });
+
+    const ids = listFilteredTransactionIds(
+      db,
+      createTransactionWebListFilters({
+        startDate: '2026-06-01',
+        endDate: '2026-06-30',
+        useCreditPurchaseDate: true,
+      }),
+      'America/Sao_Paulo',
+    );
+
+    expect(ids).toEqual(['fallback-on-start', 'purchase-on-start']);
+  });
+
   it('hides deleted transactions by default and can include or isolate them', () => {
     const db = new DatabaseSync(':memory:');
     migrateDatabase(db);

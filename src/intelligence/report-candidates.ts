@@ -24,6 +24,7 @@ type CandidateBuildInput = {
   readonly currency: string;
   readonly publicBaseUrl: string | undefined;
   readonly floorCents: number;
+  readonly useCreditPurchaseDate: boolean;
 };
 
 export function buildCandidates(input: CandidateBuildInput): readonly ReportCandidate[] {
@@ -314,6 +315,7 @@ function buildAggregateCandidates(
       period: input.period,
       kind: profile.kind,
       id: profile.id,
+      useCreditPurchaseDate: input.useCreditPurchaseDate,
     }),
   }));
 }
@@ -354,6 +356,7 @@ export function buildReportPeriodHref(input: {
   readonly period: LocalDatePeriod;
   readonly kind: ReportTaxonomy['kind'];
   readonly id: string;
+  readonly useCreditPurchaseDate: boolean;
 }): string {
   const filterKey = input.kind === 'category' ? 'category-id' : 'label-id';
   const state = {
@@ -363,7 +366,11 @@ export function buildReportPeriodHref(input: {
       'end-date': `${input.period.end}T23:59`,
       [filterKey]: input.id,
     },
-    display: { category: 'full', labels: 'full', date: 'credit-purchase' },
+    display: {
+      category: 'full',
+      labels: 'full',
+      ...(input.useCreditPurchaseDate ? { date: 'credit-purchase' } : {}),
+    },
   };
   const base = input.publicBaseUrl?.replace(/\/+$/u, '');
   return `${base ? `${base}/` : ''}#/transactions/s=${compressToEncodedURIComponent(JSON.stringify(state))}`;

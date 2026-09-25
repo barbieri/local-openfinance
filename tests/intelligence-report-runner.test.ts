@@ -66,6 +66,7 @@ const resolved: ResolvedConfig = {
     report: {
       accountIds: [],
       includeUnannotated: true,
+      useCreditPurchaseDate: false,
     },
     reports: [report],
     web: { publicBaseUrl: 'https://finance.example' },

@@ -40,6 +40,10 @@ export type ReportFilters = {
   readonly includeUnannotated?: boolean | undefined;
 };
 
+export type GlobalReportConfig = ReportFilters & {
+  readonly useCreditPurchaseDate?: boolean | undefined;
+};
+
 export type Weekday =
   | 'monday'
   | 'tuesday'
@@ -89,7 +93,7 @@ export type AppConfig = {
     readonly similarityThreshold?: number | undefined;
     readonly pushCategoriesUpstream?: boolean | undefined;
   };
-  readonly report: ReportFilters;
+  readonly report: GlobalReportConfig;
   readonly reports?: readonly ReportConfig[] | undefined;
   readonly web?: {
     readonly publicBaseUrl?: string | undefined;
@@ -139,6 +143,7 @@ export type ResolvedAppConfig = Omit<
   readonly report: {
     readonly accountIds: readonly string[];
     readonly includeUnannotated: boolean;
+    readonly useCreditPurchaseDate: boolean;
   };
   readonly reports: readonly ResolvedReportConfig[];
   readonly web: {

@@ -1,6 +1,7 @@
 {
   "report": {
-    "includeUnannotated": true
+    "includeUnannotated": true,
+    "useCreditPurchaseDate": false
   },
   "reports": [
     {

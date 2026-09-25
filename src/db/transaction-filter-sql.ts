@@ -2,6 +2,13 @@ import type { SQLInputValue } from 'node:sqlite';
 import { buildConfirmedTransactionClassificationSql } from '../annotation/classification-policy.js';
 import { toLocalDateKey } from '../utils/local-date.js';
 import { appendDeletedVisibilityPredicate, type DeletedVisibility } from './entry-deletion.js';
+import {
+  resolveTransactionLocalDate,
+  TRANSACTION_CREDIT_PURCHASE_DATE_SQL,
+  TRANSACTION_CREDIT_PURCHASE_DATE_VALUE_SQL,
+  TRANSACTION_HAS_CALENDAR_PURCHASE_DATE_SQL,
+  TRANSACTION_HAS_CREDIT_PURCHASE_DATE_SQL,
+} from './transaction-date-basis.js';
 import { TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL } from './transaction-foreign-amount.js';
 
 export type TransactionClassificationFilter = 'all' | 'classified' | 'unclassified';
@@ -30,13 +37,7 @@ export const TRANSACTION_FILTERED_FROM_SQL = `
   JOIN connections c ON c.item_id = a.connection_item_id
   LEFT JOIN transaction_category_overrides tco ON tco.transaction_id = t.id`;
 
-export const TRANSACTION_CREDIT_PURCHASE_DATE_SQL = `
-  CASE
-    WHEN json_extract(t.raw_json, '$.creditCardMetadata.purchaseDate') IS NOT NULL
-      AND TRIM(json_extract(t.raw_json, '$.creditCardMetadata.purchaseDate')) != ''
-    THEN json_extract(t.raw_json, '$.creditCardMetadata.purchaseDate')
-    ELSE t.occurred_at
-  END`;
+export { TRANSACTION_CREDIT_PURCHASE_DATE_SQL } from './transaction-date-basis.js';
 
 export function transactionOccurredAtSql(useCreditPurchaseDate: boolean): string {
   return useCreditPurchaseDate ? TRANSACTION_CREDIT_PURCHASE_DATE_SQL : 't.occurred_at';
@@ -107,13 +108,56 @@ function appendDateBounds(
   const startIso = resolveTransactionOccurredAtLowerBound(filters.startDate, timeZone);
   const endIso = resolveTransactionOccurredAtUpperBound(filters.endDate, timeZone);
   if (startIso) {
-    parts.push(`${occurredAtSql} >= ?`);
-    params.push(startIso);
+    appendDateBound({
+      parts,
+      params,
+      occurredAtSql,
+      boundaryIso: startIso,
+      timeZone,
+      useCreditPurchaseDate: filters.useCreditPurchaseDate,
+      operator: '>=',
+    });
   }
   if (endIso) {
-    parts.push(`${occurredAtSql} <= ?`);
-    params.push(endIso);
+    appendDateBound({
+      parts,
+      params,
+      occurredAtSql,
+      boundaryIso: endIso,
+      timeZone,
+      useCreditPurchaseDate: filters.useCreditPurchaseDate,
+      operator: '<=',
+    });
   }
+}
+
+function appendDateBound(input: {
+  readonly parts: string[];
+  readonly params: SQLInputValue[];
+  readonly occurredAtSql: string;
+  readonly boundaryIso: string;
+  readonly timeZone: string;
+  readonly useCreditPurchaseDate: boolean;
+  readonly operator: '>=' | '<=';
+}): void {
+  if (!input.useCreditPurchaseDate) {
+    input.parts.push(`${input.occurredAtSql} ${input.operator} ?`);
+    input.params.push(input.boundaryIso);
+    return;
+  }
+  input.parts.push(`CASE
+    WHEN ${TRANSACTION_HAS_CALENDAR_PURCHASE_DATE_SQL}
+    THEN SUBSTR(${TRANSACTION_CREDIT_PURCHASE_DATE_VALUE_SQL}, 1, 10) ${input.operator} ?
+    WHEN ${TRANSACTION_HAS_CREDIT_PURCHASE_DATE_SQL}
+    THEN unixepoch(${TRANSACTION_CREDIT_PURCHASE_DATE_VALUE_SQL}, 'subsec') ${input.operator}
+         unixepoch(?, 'subsec')
+    ELSE t.occurred_at ${input.operator} ?
+  END`);
+  input.params.push(
+    resolveTransactionLocalDate(input.boundaryIso, input.timeZone),
+    input.boundaryIso,
+    input.boundaryIso,
+  );
 }
 
 function appendClassificationFilter(

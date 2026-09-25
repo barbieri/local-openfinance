@@ -52,8 +52,9 @@ Reports always analyze transactions. The config intentionally has no
 `entryTypes` switch: investment positions, accounts, loans, and card bills are
 bounded supporting tools, not alternate inputs to the transaction analysis.
 
-Normalization uses `occurred_at` as the fact date
-(`useCreditPurchaseDate: false`). It follows these rules:
+Normalization uses `occurred_at` as the fact date by default; setting
+`report.useCreditPurchaseDate` in the config dates credit-card purchases by
+their purchase date instead. It follows these rules:
 
 - A positive credit-card value is an expense. A negative credit-card value is
   a refund.

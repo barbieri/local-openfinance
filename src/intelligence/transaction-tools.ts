@@ -250,7 +250,9 @@ function requireScopedTransaction(
   floorCents: number,
 ): EnrichedTransaction {
   const { db, scope } = context;
-  const row = getEnrichedTransaction(db, id, scope.timeZone, { useCreditPurchaseDate: true });
+  const row = getEnrichedTransaction(db, id, scope.timeZone, {
+    useCreditPurchaseDate: scope.useCreditPurchaseDate,
+  });
   if (
     !row ||
     row.local_date < scope.period.start ||
@@ -337,7 +339,7 @@ function createTransactionHistoryScope(
     endDate: scope.period.end,
     classification: scope.report.includeUnannotated ? 'all' : 'classified',
     transfers: 'hide',
-    useCreditPurchaseDate: true,
+    useCreditPurchaseDate: scope.useCreditPurchaseDate,
     minAbsoluteAmountCents: floorCents,
   };
 }
