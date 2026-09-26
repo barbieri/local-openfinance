@@ -20,6 +20,14 @@ import {
 import { BackgroundJobManager } from '../src/web/server/background-jobs.js';
 import { createWebApp } from '../src/web/server/server.js';
 
+function readPolicyDecisions(value: unknown): readonly unknown[] {
+  if (!value || typeof value !== 'object' || !('decisions' in value)) {
+    throw new Error('Expected taxonomy policy response');
+  }
+  if (!Array.isArray(value.decisions)) throw new Error('Expected taxonomy policy decisions');
+  return value.decisions;
+}
+
 describe('intelligence web API', () => {
   it('reads and writes markdown memory and lists runs', async () => {
     const db = new DatabaseSync(':memory:');
@@ -254,9 +262,31 @@ describe('intelligence web API', () => {
             reason: 'Generated.',
             source: 'generated',
           },
+          {
+            kind: 'label',
+            id: 'recurring',
+            path: 'Recurring',
+            treatment: 'reportable',
+            confidence: 0.8,
+            reason: 'Generated.',
+            source: 'generated',
+          },
         ],
       }),
     });
+    db.prepare(
+      `INSERT INTO categories (id, name, parent_id, raw_json, synced_at)
+       VALUES ('food', 'Food', NULL, '{}', '2026-09-25T12:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO category_labels (
+         category_id, name, icon, color, name_manual, icon_manual, color_manual, updated_at
+       ) VALUES ('food', 'Meals', 'MdRestaurant', '#f97316', 1, 1, 1, '2026-09-25T12:00:00.000Z')`,
+    ).run();
+    db.prepare(
+      `INSERT INTO annotation_labels (id, name, icon, color, created_at)
+       VALUES ('recurring', 'Recurring', NULL, NULL, '2026-09-25T12:00:00.000Z')`,
+    ).run();
     const changedPolicy = await app.request(
       '/api/intelligence/reports/weekly/taxonomy-policy/decisions',
       {
@@ -270,10 +300,81 @@ describe('intelligence web API', () => {
       },
     );
     expect(changedPolicy.status).toBe(200);
-    expect(await changedPolicy.json()).toMatchObject({
+    const changedPolicyBody = await changedPolicy.json();
+    expect(changedPolicyBody).toMatchObject({
       reportId: 'weekly',
-      decisions: [{ id: 'food', treatment: 'internal-own-account', source: 'user' }],
+      decisions: [
+        {
+          id: 'food',
+          name: 'Meals',
+          icon: 'MdRestaurant',
+          color: '#f97316',
+          treatment: 'internal-own-account',
+          source: 'user',
+          reason: 'User override',
+        },
+        {
+          id: 'recurring',
+          name: 'Recurring',
+          icon: 'MdLabel',
+          color: '#64748b',
+        },
+      ],
     });
+    const localizedPolicy = await app.request(
+      '/api/intelligence/reports/weekly/taxonomy-policy/decisions?locale=pt-BR',
+      {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'category',
+          id: 'food',
+          treatment: 'internal-own-account',
+        }),
+      },
+    );
+    const localizedPolicyBody = await localizedPolicy.json();
+    expect(readPolicyDecisions(localizedPolicyBody)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'food', reason: 'Substituição do usuário' }),
+      ]),
+    );
+    db.prepare("DELETE FROM category_labels WHERE category_id = 'food'").run();
+    db.prepare("UPDATE categories SET name_translated = 'Alimentação' WHERE id = 'food'").run();
+    const localizedCategory = await app.request(
+      '/api/intelligence/reports/weekly/taxonomy-policy/decisions?locale=pt-BR',
+      {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'category',
+          id: 'food',
+          treatment: 'internal-own-account',
+        }),
+      },
+    );
+    const localizedCategoryBody = await localizedCategory.json();
+    expect(readPolicyDecisions(localizedCategoryBody)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: 'food', name: 'Alimentação', path: 'Alimentação' }),
+      ]),
+    );
+    const englishCategory = await app.request(
+      '/api/intelligence/reports/weekly/taxonomy-policy/decisions?locale=en-US',
+      {
+        method: 'PUT',
+        headers: { ...auth, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'category',
+          id: 'food',
+          treatment: 'internal-own-account',
+        }),
+      },
+    );
+    const englishCategoryBody = await englishCategory.json();
+    expect(readPolicyDecisions(englishCategoryBody)).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: 'food', name: 'Food', path: 'Food' })]),
+    );
     const previewPolicy = loadStoredReportTaxonomyPolicy(db, 'weekly');
     if (!previewPolicy) throw new Error('Expected the API to persist the taxonomy policy');
     expect(
@@ -297,7 +398,22 @@ describe('intelligence web API', () => {
     );
     expect(clearedPolicy.status).toBe(200);
     expect(await clearedPolicy.json()).toMatchObject({
-      decisions: [{ id: 'food', treatment: 'reportable', source: 'generated' }],
+      decisions: [
+        {
+          id: 'food',
+          name: 'Food',
+          icon: 'MdCategory',
+          color: '#64748b',
+          treatment: 'reportable',
+          source: 'generated',
+        },
+        {
+          id: 'recurring',
+          name: 'Recurring',
+          icon: 'MdLabel',
+          color: '#64748b',
+        },
+      ],
     });
     expect(
       (

@@ -51,7 +51,9 @@ bounded supporting tools, not alternate inputs to the transaction analysis.
 
 Normalization uses `occurred_at` as the fact date by default; setting
 `report.useCreditPurchaseDate` in the config dates credit-card purchases by
-their purchase date instead. It follows these rules:
+their purchase date instead. The resolved report scope applies the same choice
+to chart queries, transaction tools, history, candidates, and evidence links.
+It follows these rules:
 
 - A positive credit-card value is an expense. A negative credit-card value is
   a refund.
@@ -199,8 +201,8 @@ regression trends use only complete buckets at their original month positions.
 The latest displayed month has a blue background. Every chart has localized
 titles, legends, units, ticks, and axis labels. Monthly report bodies also append
 a deterministic sanitized `report-table` with the same 12 months as the chart
-and localized expense, income, and cumulative-balance rows. The runner computes
-this table from the analysis buckets. It also includes monthly balance and signed
+and localized expense, income, and cumulative-balance rows. The chart and runner
+both consume the pure model in `src/intelligence/monthly-comparison.ts`. It also includes monthly balance and signed
 month-over-month percentage rows for income and expenses. The first percentage is
 unavailable because it has no preceding displayed month. Model output cannot
 fabricate these values, and the same table appears in stored web HTML, email HTML,
@@ -214,12 +216,13 @@ account scope, `includeUnannotated`, window, and schedule are defined.
 `MAX_HISTORY_ROWS`, and account scope through `createTransactionWebListFilters`.
 The report taxonomy policy in `src/intelligence/report-taxonomy-policy.ts`, stored
 per report in `intelligence_taxonomy_policies`, applies semantic treatments; only
-facts whose treatment is `reportable` enter analysis. Stored decisions identify whether they came from generation or a user override. Regeneration refreshes generated decisions, adds new taxonomy items, and preserves user overrides. The Reports taxonomy-policy screen changes or clears overrides in SQLite, so the next preview or run observes them without a server restart or config edit. `src/intelligence/report-analysis.ts`
+facts whose treatment is `reportable` enter analysis. Generated decisions stay in that cache, while user choices are stored independently in `intelligence_taxonomy_overrides`. Regeneration refreshes generated decisions and then composes the latest overrides, so a concurrent user edit cannot be overwritten. The Reports taxonomy-policy screen changes or clears overrides in SQLite, so the next preview or run observes them without a server restart or config edit. `src/intelligence/report-analysis.ts`
 builds `chartPeriods` and aggregates each month's `incomeCents` and
-`expenseCents`. `src/intelligence/charts.ts` renders `monthly-comparison`; its
-cumulative balance and least-squares regressions are pure functions of
-`analysis.chart`. Finally, `buildMonthlyComparisonTable` in the report runner
-appends the deterministic table to `bodyHtml` before `sanitizeReportBodyHtml`.
+`expenseCents`. `src/intelligence/monthly-comparison.ts` derives cumulative
+balance, month-over-month deltas, and least-squares regressions from
+`analysis.chart`. The chart renderer and `buildMonthlyComparisonTable` in the
+report runner consume that model; the runner appends the deterministic table to
+`bodyHtml` before `sanitizeReportBodyHtml`.
 
 Category and label charts select the largest parent series over the displayed
 window and combine the remainder as `Others`. Child breakdowns belong in the

@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
+import { buildAnnotationLabelIndex } from '../../db/annotation-labels.js';
 import { backupDatabase } from '../../db/database-health.js';
 import {
   getIntelligenceMemory,
@@ -10,6 +11,7 @@ import {
   listIntelligenceRunChartNames,
   listIntelligenceRunModelCalls,
   listIntelligenceRuns,
+  readIntelligenceTaxonomyOverrides,
   readIntelligenceTaxonomyPolicy,
   saveIntelligenceMemory,
 } from '../../db/intelligence.js';
@@ -40,11 +42,17 @@ import {
   type TaxonomyTreatment,
 } from '../../intelligence/report-taxonomy-policy.js';
 import {
+  isReportTaxonomyKind,
+  TAXONOMY_TREATMENTS,
+} from '../../intelligence/taxonomy-treatment.js';
+import {
   executeScopedIntelligenceTool,
   IntelligenceToolError,
   isIntelligenceToolName,
 } from '../../intelligence/tools.js';
+import { localText } from '../../utils/locale-text.js';
 import type { WebServerContext } from './context.js';
+import { buildCategoryIndexForLocale, parseRequestLocale } from './request-locale.js';
 import { parseValidatedJsonBody } from './validate-body.js';
 
 export function registerIntelligenceRoutes(app: Hono, ctx: WebServerContext): void {
@@ -71,7 +79,9 @@ export function registerIntelligenceRoutes(app: Hono, ctx: WebServerContext): vo
     const reportId = requireReportId(ctx, c.req.param('reportId'));
     const scope = resolveReportQueryScope(ctx.resolved, reportId);
     const policy = await resolveReportTaxonomyPolicy({ db: ctx.db, scope, persist: true });
-    return c.json(presentTaxonomyPolicy(ctx, reportId, policy));
+    return c.json(
+      presentTaxonomyPolicy(ctx, reportId, policy, parseRequestLocale(c.req.query('locale'))),
+    );
   });
 
   app.put('/api/intelligence/reports/:reportId/taxonomy-policy/decisions', async (c) => {
@@ -89,18 +99,22 @@ export function registerIntelligenceRoutes(app: Hono, ctx: WebServerContext): vo
       body.treatment,
     );
     if (!policy) throw new HTTPException(404, { message: 'Taxonomy decision not found' });
-    return c.json(presentTaxonomyPolicy(ctx, reportId, policy));
+    return c.json(
+      presentTaxonomyPolicy(ctx, reportId, policy, parseRequestLocale(c.req.query('locale'))),
+    );
   });
 
   app.delete('/api/intelligence/reports/:reportId/taxonomy-policy/decisions/:kind/:id', (c) => {
     const reportId = requireReportId(ctx, c.req.param('reportId'));
     const kind = c.req.param('kind');
-    if (kind !== 'category' && kind !== 'label') {
+    if (!isReportTaxonomyKind(kind)) {
       throw new HTTPException(400, { message: 'Invalid taxonomy kind' });
     }
     const policy = removeReportTaxonomyPolicyOverride(ctx.db, reportId, kind, c.req.param('id'));
     if (!policy) throw new HTTPException(404, { message: 'Taxonomy decision not found' });
-    return c.json(presentTaxonomyPolicy(ctx, reportId, policy));
+    return c.json(
+      presentTaxonomyPolicy(ctx, reportId, policy, parseRequestLocale(c.req.query('locale'))),
+    );
   });
 
   app.get('/api/intelligence/reports/:reportId/memory', (c) => {
@@ -416,25 +430,39 @@ function isPresentableReportChart(chart: {
   );
 }
 
-const TAXONOMY_TREATMENTS = [
-  'internal-own-account',
-  'portfolio-movement',
-  'account-settlement',
-  'reportable',
-  'uncertain',
-] as const satisfies readonly TaxonomyTreatment[];
-
 function presentTaxonomyPolicy(
   ctx: WebServerContext,
   reportId: string,
   policy: { readonly generatedAt?: string; readonly decisions: readonly TaxonomyPolicyDecision[] },
+  locale: string,
 ) {
   const stored = readIntelligenceTaxonomyPolicy(ctx.db, reportId);
+  const overrides = readIntelligenceTaxonomyOverrides(ctx.db, reportId);
+  const categories = buildCategoryIndexForLocale(ctx.db, locale);
+  const labels = buildAnnotationLabelIndex(ctx.db);
+  const updatedAt =
+    [stored?.updatedAt ?? '', ...overrides.map((override) => override.updatedAt)].sort().at(-1) ??
+    '';
   return {
     reportId,
     generatedAt: policy.generatedAt ?? stored?.updatedAt ?? '',
-    updatedAt: stored?.updatedAt ?? '',
-    decisions: policy.decisions.map(({ generated: _generated, ...decision }) => decision),
+    updatedAt,
+    decisions: policy.decisions.map(({ generated: _generated, ...decision }) => {
+      const category = decision.kind === 'category' ? categories.get(decision.id) : undefined;
+      const label = decision.kind === 'label' ? labels.get(decision.id) : undefined;
+      const presentation = category?.presentation ?? label;
+      return {
+        ...decision,
+        path: category?.path ?? label?.path ?? decision.path,
+        reason:
+          decision.source === 'user'
+            ? localText(locale, 'reports.taxonomySource.user')
+            : decision.reason,
+        name: presentation?.name ?? decision.path.split(' > ').at(-1) ?? decision.id,
+        icon: presentation?.icon ?? (decision.kind === 'category' ? 'MdCategory' : 'MdLabel'),
+        color: presentation?.color ?? '#64748b',
+      };
+    }),
     treatments: TAXONOMY_TREATMENTS,
   };
 }
