@@ -97,7 +97,7 @@ Validated write routes include:
 The Reports tab lists configured named reports with ids, schedules, latest-run
 timestamps, and alert counts. A report page renders stored run Markdown without
 raw HTML or Markdown images, displays only the persisted balance and allocation
-PNGs, and provides run history, editable per-report memory, and a taxonomy-policy screen grouped by category or label root path. The policy screen shows generated and user decisions, allows treatment overrides, and can clear an override back to its generated value. A report with no
+PNGs, and provides run history, editable per-report memory, and a taxonomy-policy screen grouped by category or label root path. The policy screen shows generated and user decisions, identifies each effective treatment with a color-coded badge, filters by treatment and taxonomy kind, and searches paths without case or diacritic sensitivity. It allows treatment overrides and can clear an override back to its generated value. A report with no
 runs shows a copyable, shell-safe CLI generation command.
 
 Current-report chat and chat seeded from a stored run use persisted transcripts.

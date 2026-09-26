@@ -8,6 +8,11 @@ import { apiJson } from '../lib/api.js';
 import type { ReportsSection } from '../lib/app-hash.js';
 import { useAppNavigation } from '../lib/navigation.js';
 import { formatGenerateCommand } from '../lib/report-command.js';
+import {
+  matchesTaxonomyDecisionFilter,
+  type TaxonomyDecisionFilter,
+  type TaxonomyTreatment,
+} from '../lib/report-taxonomy-filter.js';
 
 const ReportChat = lazy(() =>
   import('./ReportChat.js').then((module) => ({ default: module.ReportChat })),
@@ -18,13 +23,6 @@ type MemoryResponse = {
   readonly updatedAt: string;
   readonly updatedBy: string;
 };
-
-type TaxonomyTreatment =
-  | 'internal-own-account'
-  | 'portfolio-movement'
-  | 'account-settlement'
-  | 'reportable'
-  | 'uncertain';
 
 type TaxonomyPolicyResponse = {
   readonly reportId: string;
@@ -92,6 +90,22 @@ type MemoryEditorState = {
 const REPORT_SECTIONS = [
   { id: 'current', labelKey: 'reports.sectionCurrent' },
 ] as const satisfies ReadonlyArray<{ readonly id: ReportsSection; readonly labelKey: string }>;
+
+const TAXONOMY_TREATMENT_BADGE_CLASSES: Record<TaxonomyTreatment, string> = {
+  reportable: 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-200',
+  uncertain: 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-200',
+  'portfolio-movement': 'bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-200',
+  'account-settlement': 'bg-purple-100 text-purple-800 dark:bg-purple-950 dark:text-purple-200',
+  'internal-own-account': 'bg-slate-200 text-slate-800 dark:bg-slate-800 dark:text-slate-200',
+};
+
+const TAXONOMY_TREATMENT_DOT_CLASSES: Record<TaxonomyTreatment, string> = {
+  reportable: 'bg-emerald-600 dark:bg-emerald-400',
+  uncertain: 'bg-amber-600 dark:bg-amber-400',
+  'portfolio-movement': 'bg-blue-600 dark:bg-blue-400',
+  'account-settlement': 'bg-purple-600 dark:bg-purple-400',
+  'internal-own-account': 'bg-slate-600 dark:bg-slate-400',
+};
 
 export function ReportsPage() {
   const { t } = useTranslation();
@@ -451,6 +465,11 @@ function ReportsCurrentSection({
 function ReportsTaxonomySection({ reportId }: { readonly reportId: string }) {
   const { t } = useTranslation();
   const queryClient = useQueryClient();
+  const [filter, setFilter] = useState<TaxonomyDecisionFilter>({
+    treatment: 'all',
+    kind: 'all',
+    search: '',
+  });
   const endpoint = `/api/intelligence/reports/${encodeURIComponent(reportId)}/taxonomy-policy`;
   const { data, isLoading, isError, error } = useQuery({
     queryKey: ['intelligence-taxonomy-policy', reportId],
@@ -495,13 +514,78 @@ function ReportsTaxonomySection({ reportId }: { readonly reportId: string }) {
       </p>
     );
   }
-  const groups = groupTaxonomyDecisions(data.decisions);
+  const visibleDecisions = data.decisions.filter((decision) =>
+    matchesTaxonomyDecisionFilter(decision, filter),
+  );
+  const groups = groupTaxonomyDecisions(visibleDecisions);
   return (
     <section className="space-y-4">
       <div>
         <h3 className="font-semibold">{t('reports.taxonomyTitle')}</h3>
         <p className="text-sm text-muted-foreground">{t('reports.taxonomyExplanation')}</p>
       </div>
+      <div className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-3">
+        <label className="space-y-1 text-sm">
+          <span className="font-medium">{t('reports.taxonomyFilterTreatment')}</span>
+          <select
+            className="w-full rounded border border-input bg-background px-2 py-1.5"
+            value={filter.treatment}
+            onChange={(event) =>
+              setFilter((current) => ({
+                ...current,
+                treatment: event.target.value as TaxonomyDecisionFilter['treatment'],
+              }))
+            }
+          >
+            <option value="all">{t('reports.taxonomyFilterAll')}</option>
+            {data.treatments.map((treatment) => (
+              <option key={treatment} value={treatment}>
+                {t(`reports.taxonomyTreatment.${treatment}`)}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="font-medium">{t('reports.taxonomyFilterKind')}</span>
+          <select
+            className="w-full rounded border border-input bg-background px-2 py-1.5"
+            value={filter.kind}
+            onChange={(event) =>
+              setFilter((current) => ({
+                ...current,
+                kind: event.target.value as TaxonomyDecisionFilter['kind'],
+              }))
+            }
+          >
+            <option value="all">{t('reports.taxonomyFilterAll')}</option>
+            <option value="category">{t('reports.taxonomyKind.category')}</option>
+            <option value="label">{t('reports.taxonomyKind.label')}</option>
+          </select>
+        </label>
+        <label className="space-y-1 text-sm">
+          <span className="font-medium">{t('reports.taxonomyFilterSearch')}</span>
+          <input
+            type="search"
+            className="w-full rounded border border-input bg-background px-2 py-1.5"
+            value={filter.search}
+            placeholder={t('reports.taxonomyFilterSearchPlaceholder')}
+            onChange={(event) =>
+              setFilter((current) => ({ ...current, search: event.target.value }))
+            }
+          />
+        </label>
+        <p className="text-xs text-muted-foreground sm:col-span-3">
+          {t('reports.taxonomyFilterCount', {
+            visible: visibleDecisions.length,
+            total: data.decisions.length,
+          })}
+        </p>
+      </div>
+      {visibleDecisions.length === 0 ? (
+        <p className="rounded-lg border border-dashed border-border p-4 text-sm text-muted-foreground">
+          {t('reports.taxonomyNoMatches')}
+        </p>
+      ) : null}
       {[...groups.entries()].map(([root, decisions]) => (
         <div key={root} className="space-y-2">
           <h4 className="text-sm font-semibold">{root}</h4>
@@ -510,6 +594,15 @@ function ReportsTaxonomySection({ reportId }: { readonly reportId: string }) {
               <li key={`${decision.kind}:${decision.id}`} className="space-y-2 p-3">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="min-w-0 flex-1 text-sm">{decision.path}</span>
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-medium ${TAXONOMY_TREATMENT_BADGE_CLASSES[decision.treatment]}`}
+                  >
+                    <span
+                      className={`size-1.5 rounded-full ${TAXONOMY_TREATMENT_DOT_CLASSES[decision.treatment]}`}
+                      aria-hidden="true"
+                    />
+                    {t(`reports.taxonomyTreatment.${decision.treatment}`)}
+                  </span>
                   <span className="rounded bg-muted px-2 py-0.5 text-xs">
                     {t(`reports.taxonomySource.${decision.source}`)}
                   </span>
