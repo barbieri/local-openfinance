@@ -787,14 +787,17 @@ function loadStoredCharts(
   if (primary.length === 0) {
     throw new Error('Stored primary chart is unavailable for report delivery.');
   }
-  const required = [
-    ...primary,
-    requireStoredChart(db, runId, 'categories', language),
-    requireStoredChart(db, runId, 'labels', language),
-  ];
+  const optionalComparison = getIntelligenceRunChart(db, runId, 'year-over-year');
+  const optionalYearOverYear =
+    optionalComparison?.mimeType === 'image/png'
+      ? [storedChart('year-over-year', optionalComparison.bytes, language)]
+      : [];
   const optional = ['investments-type', 'investments-subtype', 'investments-code'] as const;
   return [
-    ...required,
+    ...primary,
+    ...optionalYearOverYear,
+    requireStoredChart(db, runId, 'categories', language),
+    requireStoredChart(db, runId, 'labels', language),
     ...optional.flatMap((name) => {
       const stored = getIntelligenceRunChart(db, runId, name);
       return stored?.mimeType === 'image/png' ? [storedChart(name, stored.bytes, language)] : [];

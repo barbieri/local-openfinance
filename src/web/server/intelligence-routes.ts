@@ -422,6 +422,7 @@ function isPresentableReportChart(chart: {
       chart.name === 'allocation' ||
       chart.name === 'cashflow' ||
       chart.name === 'monthly-comparison' ||
+      chart.name === 'year-over-year' ||
       chart.name === 'categories' ||
       chart.name === 'labels' ||
       chart.name === 'investments-type' ||

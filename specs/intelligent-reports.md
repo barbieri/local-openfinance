@@ -177,7 +177,8 @@ Dry runs return the same metrics without persisting them.
 
 ## Charts
 
-Each run stores three deterministic 1200 by 640 PNG charts:
+Each run stores three deterministic 1200 by 640 PNG charts, with one optional
+year-over-year chart for monthly reports:
 
 - Daily reports use `cashflow` for income, analytical expenses, and account
   balance.
@@ -193,6 +194,16 @@ Each run stores three deterministic 1200 by 640 PNG charts:
   bucket end. Cumulative and account balances never affect a bar or the Y domain.
 - `categories` shows stacked parent-category spending by report period.
 - `labels` shows stacked parent-label spending by report period.
+- `year-over-year` appears after `monthly-comparison` when at least one complete
+  current/prior calendar-month pair is available. Its upper line panel compares
+  expenses and its lower panel compares income, each with its own scale. The
+  current year is solid, the prior year dashed, and each comparable month has
+  points. Refunds do not enter either line. Months before the first scoped raw
+  transaction are unavailable; a month containing that first transaction is
+  partial unless it starts on day one. An ad-hoc current month is partial until
+  its last calendar day. Omitted months are not plotted, while complete months
+  with no reportable facts have zero totals. The optional PNG is persisted with
+  the run and reloaded on delivery retry; older runs without it remain valid.
 
 A daily report shows 30 days. A weekly report preserves every supplied weekly
 bucket, including 12-week comparisons. A monthly report
@@ -220,6 +231,12 @@ Report configuration starts in `reports[]` in `schemas/config.schema.json`, wher
 account scope, `includeUnannotated`, window, and schedule are defined.
 `src/intelligence/report-facts.ts` loads facts with `historyStart`,
 `MAX_HISTORY_ROWS`, and account scope through `createTransactionWebListFilters`.
+Monthly analysis loads from at least January 1 of the prior calendar year, even
+when the rare-item lookback is shorter. The fact loader exposes the earliest raw
+scoped row date as the comparison's lower coverage boundary; the report period
+end is its upper boundary. Year-over-year totals use only normalized reportable
+facts in the selected analysis currency, independently of the unchanged
+12-bucket `analysis.chart` and monthly HTML table.
 The report taxonomy policy in `src/intelligence/report-taxonomy-policy.ts`, stored
 per report in `intelligence_taxonomy_policies`, applies semantic treatments; only
 facts whose treatment is `reportable` enter analysis. Generated decisions stay in that cache, while user choices are stored independently in `intelligence_taxonomy_overrides`. Regeneration refreshes generated decisions and then composes the latest overrides, so a concurrent user edit cannot be overwritten. The Reports taxonomy-policy screen changes or clears overrides in SQLite, so the next preview or run observes them without a server restart or config edit. `src/intelligence/report-analysis.ts`

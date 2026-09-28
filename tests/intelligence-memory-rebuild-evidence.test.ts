@@ -132,6 +132,7 @@ function analysis(input: {
       portfolio: 0,
       settlements: 0,
     },
+    yearOverYear: null,
     chart: [],
   };
 }

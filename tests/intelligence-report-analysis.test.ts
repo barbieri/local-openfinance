@@ -112,6 +112,105 @@ function analysisCandidate(id: string, profileRefs: readonly string[]): ReportCa
 }
 
 describe('deterministic report analysis', () => {
+  it('compares only complete year-over-year months from scoped raw coverage', async () => {
+    const db = openDb();
+    for (const [id, account, date, cents] of [
+      ['first', 'bank', '2025-06-10', -1_000],
+      ['july-prior-expense', 'bank', '2025-07-10', -10_000],
+      ['july-prior-income', 'bank', '2025-07-12', 5_000],
+      ['july-refund', 'card', '2025-07-13', -700],
+      ['august-prior-expense', 'bank', '2025-08-10', -20_000],
+      ['august-prior-income', 'bank', '2025-08-12', 6_000],
+      ['july-current-expense', 'bank', '2026-07-10', -30_000],
+      ['july-current-income', 'bank', '2026-07-12', 7_000],
+      ['august-current-expense', 'bank', '2026-08-10', -40_000],
+      ['august-current-income', 'bank', '2026-08-12', 8_000],
+    ] as const)
+      insertTransaction(db, id, account, date, cents, id);
+    const loaded = await loadConfig('examples/expenses-config.json');
+    const resolved = {
+      ...loaded,
+      config: {
+        ...loaded.config,
+        intelligence: { ...loaded.config.intelligence, rareLookbackYears: 1 },
+      },
+    };
+    const period = { start: '2026-08-01', end: '2026-08-31' };
+    const scope = resolveReportQueryScope(resolved, 'monthly', { timeZone: 'UTC', period });
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+
+    expect(analysis.chart).toHaveLength(12);
+    expect(analysis.yearOverYear).toEqual({
+      priorYear: 2025,
+      currentYear: 2026,
+      months: [
+        ...Array.from({ length: 5 }, (_, index) => ({
+          kind: 'omitted',
+          month: index + 1,
+          reason: 'unavailable',
+        })),
+        { kind: 'omitted', month: 6, reason: 'partial' },
+        {
+          kind: 'comparable',
+          month: 7,
+          prior: { expenseCents: 10_000, incomeCents: 5_000 },
+          current: { expenseCents: 30_000, incomeCents: 7_000 },
+        },
+        {
+          kind: 'comparable',
+          month: 8,
+          prior: { expenseCents: 20_000, incomeCents: 6_000 },
+          current: { expenseCents: 40_000, incomeCents: 8_000 },
+        },
+      ],
+    });
+
+    const partialScope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-08-01', end: '2026-08-15' },
+    });
+    const partial = buildReportAnalysis({
+      db,
+      resolved,
+      scope: partialScope,
+      policy: { decisions: [] },
+    });
+    expect(partial.yearOverYear?.months.at(-1)).toEqual({
+      kind: 'omitted',
+      month: 8,
+      reason: 'partial',
+    });
+    expect(partial.chart).toHaveLength(12);
+  });
+
+  it('derives year-over-year coverage before the bounded analysis history', async () => {
+    const db = openDb();
+    insertTransaction(db, 'coverage', 'bank', '2024-12-31', -100, 'coverage');
+    insertTransaction(db, 'january-prior', 'bank', '2025-01-10', -1_000, 'january prior');
+    insertTransaction(db, 'january-current', 'bank', '2026-01-10', -2_000, 'january current');
+    const loaded = await loadConfig('examples/expenses-config.json');
+    const resolved = {
+      ...loaded,
+      config: {
+        ...loaded.config,
+        intelligence: { ...loaded.config.intelligence, rareLookbackYears: 1 },
+      },
+    };
+    const scope = resolveReportQueryScope(resolved, 'monthly', {
+      timeZone: 'UTC',
+      period: { start: '2026-08-01', end: '2026-08-31' },
+    });
+
+    const analysis = buildReportAnalysis({ db, resolved, scope, policy: { decisions: [] } });
+
+    expect(analysis.yearOverYear?.months[0]).toEqual({
+      kind: 'comparable',
+      month: 1,
+      prior: { expenseCents: 1_000, incomeCents: 0 },
+      current: { expenseCents: 2_000, incomeCents: 0 },
+    });
+  });
+
   it('keeps must-report profile references beyond the normal profile limit', () => {
     const profiles = Array.from({ length: 14 }, (_, index) => analysisProfile(index));
     const candidates = profiles.map((profile, index) =>

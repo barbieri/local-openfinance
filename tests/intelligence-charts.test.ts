@@ -7,6 +7,7 @@ import {
   renderReportAnalysisCharts,
   renderStackedAllocationSvg,
   renderWeeklyComparisonSvg,
+  renderYearOverYearSvg,
   reportChartAltText,
 } from '../src/intelligence/charts.js';
 import type { InvestmentReportSnapshot } from '../src/intelligence/investment-report-snapshot.js';
@@ -64,6 +65,7 @@ const analysis: ReportAnalysis = {
     portfolio: 0,
     settlements: 0,
   },
+  yearOverYear: null,
   chart: [
     {
       start: '2026-08-03',
@@ -131,6 +133,133 @@ function svgAxisLabels(svg: string): readonly string[] {
 }
 
 describe('intelligence PNG charts', () => {
+  it('renders only comparable year-over-year months in separate deterministic panels', () => {
+    const monthly: ReportAnalysis = {
+      ...analysis,
+      period: {
+        start: '2026-08-01',
+        end: '2026-08-31',
+        cadence: 'monthly',
+        comparisonBasis: 'calendar-month',
+      },
+      yearOverYear: {
+        priorYear: 2025,
+        currentYear: 2026,
+        months: [
+          ...Array.from({ length: 6 }, (_, index) => ({
+            kind: 'omitted' as const,
+            month: index + 1,
+            reason: index === 5 ? ('partial' as const) : ('unavailable' as const),
+          })),
+          {
+            kind: 'comparable',
+            month: 7,
+            prior: { expenseCents: 10_000, incomeCents: 5_000 },
+            current: { expenseCents: 30_000, incomeCents: 7_000 },
+          },
+          {
+            kind: 'comparable',
+            month: 8,
+            prior: { expenseCents: 20_000, incomeCents: 6_000 },
+            current: { expenseCents: 40_000, incomeCents: 8_000 },
+          },
+        ],
+      },
+    };
+    const svg = renderYearOverYearSvg(monthly);
+    expect(svg).toContain('Comparação mensal ano a ano');
+    expect(svg).toContain('Gastos');
+    expect(svg).toContain('Rendimentos');
+    expect(svg).toContain('jul.');
+    expect(svg).toContain('ago.');
+    expect(svg).not.toContain('jun.');
+    expect(svg.match(/class="yoy-point"/g)).toHaveLength(8);
+    expect(svg.match(/class="yoy-line"/g)).toHaveLength(4);
+    expect(svg).toContain('data-year="prior"');
+    expect(svg).toContain('stroke-dasharray="8 6"');
+
+    const first = renderReportAnalysisCharts(dataset, monthly);
+    const second = renderReportAnalysisCharts(dataset, monthly);
+    expect(first.map((chart) => chart.name)).toEqual([
+      'monthly-comparison',
+      'year-over-year',
+      'categories',
+      'labels',
+    ]);
+    const image = first[1];
+    expect(image?.filename).toBe('report-year-over-year.png');
+    expect(image?.cid).toBe('report-year-over-year@local-openfinance');
+    expect(Buffer.from(image?.bytes ?? []).readUInt32BE(16)).toBe(1_200);
+    expect(Buffer.from(image?.bytes ?? []).readUInt32BE(20)).toBe(640);
+    expect(first.map((chart) => Buffer.from(chart.bytes))).toEqual(
+      second.map((chart) => Buffer.from(chart.bytes)),
+    );
+    const englishSvg = renderYearOverYearSvg({ ...monthly, language: 'en-US' });
+    expect(englishSvg).toContain('Year-over-year monthly comparison');
+    expect(englishSvg).toContain('Jul');
+    expect(englishSvg).toContain('Aug');
+  });
+
+  it('breaks year-over-year lines across omitted month gaps', () => {
+    const comparable = (month: number) => ({
+      kind: 'comparable' as const,
+      month,
+      prior: { expenseCents: month * 1_000, incomeCents: month * 2_000 },
+      current: { expenseCents: month * 3_000, incomeCents: month * 4_000 },
+    });
+    const monthly: ReportAnalysis = {
+      ...analysis,
+      period: {
+        start: '2026-05-01',
+        end: '2026-05-31',
+        cadence: 'monthly',
+        comparisonBasis: 'calendar-month',
+      },
+      yearOverYear: {
+        priorYear: 2025,
+        currentYear: 2026,
+        months: [
+          comparable(1),
+          comparable(2),
+          { kind: 'omitted', month: 3, reason: 'unavailable' },
+          comparable(4),
+          comparable(5),
+        ],
+      },
+    };
+
+    const svg = renderYearOverYearSvg(monthly);
+
+    expect(svg.match(/class="yoy-line"/g)).toHaveLength(8);
+    expect(svg).not.toContain('mar.');
+  });
+
+  it('omits the year-over-year artifact when no complete pair is available', () => {
+    const monthly: ReportAnalysis = {
+      ...analysis,
+      period: {
+        start: '2026-02-01',
+        end: '2026-02-28',
+        cadence: 'monthly',
+        comparisonBasis: 'calendar-month',
+      },
+      yearOverYear: {
+        priorYear: 2025,
+        currentYear: 2026,
+        months: [
+          { kind: 'omitted', month: 1, reason: 'unavailable' },
+          { kind: 'omitted', month: 2, reason: 'partial' },
+        ],
+      },
+    };
+
+    expect(renderReportAnalysisCharts(dataset, monthly).map((chart) => chart.name)).toEqual([
+      'monthly-comparison',
+      'categories',
+      'labels',
+    ]);
+  });
+
   it('renders deterministic currency-separated investment pies only for multi-bucket dimensions', () => {
     const snapshot: InvestmentReportSnapshot = {
       version: 2,

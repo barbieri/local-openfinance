@@ -112,6 +112,24 @@ export type ReportCandidate = {
   readonly periodHref?: string | undefined;
 };
 
+export type YearOverYearComparison = {
+  readonly currentYear: number;
+  readonly priorYear: number;
+  readonly months: readonly (
+    | {
+        readonly kind: 'comparable';
+        readonly month: number;
+        readonly prior: { readonly expenseCents: number; readonly incomeCents: number };
+        readonly current: { readonly expenseCents: number; readonly incomeCents: number };
+      }
+    | {
+        readonly kind: 'omitted';
+        readonly month: number;
+        readonly reason: 'partial' | 'unavailable';
+      }
+  )[];
+};
+
 export type ReportAnalysis = {
   readonly period: LocalDatePeriod & {
     readonly cadence: ReportCadence;
@@ -146,4 +164,5 @@ export type ReportAnalysis = {
     readonly categoryTotals: Readonly<Record<string, number>>;
     readonly labelTotals: Readonly<Record<string, number>>;
   }[];
+  readonly yearOverYear: YearOverYearComparison | null;
 };

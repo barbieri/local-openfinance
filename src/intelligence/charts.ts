@@ -28,6 +28,7 @@ export type IntelligenceChart = {
   readonly name:
     | 'cashflow'
     | 'monthly-comparison'
+    | 'year-over-year'
     | 'categories'
     | 'labels'
     | 'investments-type'
@@ -67,6 +68,19 @@ export function renderReportAnalysisCharts(
   analysis: ReportAnalysis,
   labels: IntelligenceChartLabels = {},
 ): readonly IntelligenceChart[] {
+  const yearOverYear =
+    analysis.period.cadence === 'monthly' &&
+    analysis.yearOverYear?.months.some((month) => month.kind === 'comparable')
+      ? [
+          toChart(
+            'year-over-year',
+            'report-year-over-year.png',
+            'report-year-over-year@local-openfinance',
+            reportChartAltText('year-over-year', analysis.language),
+            renderYearOverYearSvg(analysis),
+          ),
+        ]
+      : [];
   return [
     toChart(
       analysis.period.cadence === 'monthly' ? 'monthly-comparison' : 'cashflow',
@@ -85,6 +99,7 @@ export function renderReportAnalysisCharts(
         ? renderPeriodComparisonSvg(analysis, dataset)
         : renderCashflowSvg(dataset, analysis),
     ),
+    ...yearOverYear,
     toChart(
       'categories',
       'report-categories.png',
@@ -115,6 +130,9 @@ export function reportChartAltText(
   }
   if (name === 'monthly-comparison') {
     return localText(language, 'reports.chart.monthlyComparison.alt');
+  }
+  if (name === 'year-over-year') {
+    return localText(language, 'reports.chart.yearOverYear.alt');
   }
   if (name === 'categories') {
     return localText(language, 'reports.chart.categories');
@@ -231,6 +249,76 @@ function stableColor(id: string): string {
 
 export function renderMonthlyComparisonSvg(analysis: ReportAnalysis): string {
   return renderPeriodComparisonSvg(analysis, { dailyBalance: [] });
+}
+
+export function renderYearOverYearSvg(analysis: ReportAnalysis): string {
+  const comparison = analysis.yearOverYear;
+  if (!comparison) throw new Error('Year-over-year comparison is unavailable.');
+  const comparable = comparison.months.filter((month) => month.kind === 'comparable');
+  const plotLeft = 160;
+  const plotRight = 1050;
+  const x = (month: number) => {
+    const index = comparable.findIndex((candidate) => candidate.month === month);
+    if (index < 0) throw new Error(`Comparable month ${month} is unavailable.`);
+    return comparable.length === 1
+      ? (plotLeft + plotRight) / 2
+      : plotLeft + (index / (comparable.length - 1)) * (plotRight - plotLeft);
+  };
+  const monthFormat = getDateTimeFormat(analysis.language, { month: 'short', timeZone: 'UTC' });
+  const labels = comparable
+    .map(
+      (month) =>
+        `<text x="${x(month.month)}" y="591" class="axis" text-anchor="middle">${escapeXml(monthFormat.format(new Date(Date.UTC(comparison.currentYear, month.month - 1, 1))))}</text>`,
+    )
+    .join('');
+  const panel = (direction: 'expense' | 'income', top: number, bottom: number) => {
+    const field = `${direction}Cents` as const;
+    const values = comparable.flatMap((month) => [month.prior[field], month.current[field]]);
+    const max = Math.max(1, ...values) * 1.1;
+    const y = (value: number) => scale(value, 0, max, bottom, top);
+    const grid = Array.from({ length: 3 }, (_, index) => {
+      const value = (max * index) / 2;
+      const py = y(value);
+      return `<line x1="${plotLeft}" y1="${py}" x2="${plotRight}" y2="${py}" stroke="#e2e8f0"/><text x="${plotLeft - 12}" y="${py + 5}" class="axis" text-anchor="end">${escapeXml(formatCompactMoneyLocale(value, analysis.currency, analysis.language))}</text>`;
+    }).join('');
+    const series = (year: 'prior' | 'current', color: string, dashed: boolean) => {
+      const runs: (typeof comparable)[] = [];
+      for (const month of comparable) {
+        const run = runs.at(-1);
+        if (run && run.at(-1)?.month === month.month - 1) run.push(month);
+        else runs.push([month]);
+      }
+      const lines = runs
+        .filter((run) => run.length > 1)
+        .map(
+          (run) =>
+            `<polyline class="yoy-line" data-year="${year}" points="${run.map((month) => `${x(month.month)},${y(month[year][field])}`).join(' ')}" fill="none" stroke="${color}" stroke-width="3"${dashed ? ' stroke-dasharray="8 6"' : ''}/>`,
+        )
+        .join('');
+      const points = comparable
+        .map(
+          (month) =>
+            `<circle class="yoy-point" data-year="${year}" cx="${x(month.month)}" cy="${y(month[year][field])}" r="5" fill="${color}" stroke="#ffffff" stroke-width="2"/>`,
+        )
+        .join('');
+      return lines + points;
+    };
+    const labelKey =
+      direction === 'expense'
+        ? 'reports.chart.yearOverYear.expenses'
+        : 'reports.chart.yearOverYear.income';
+    return `<text x="${plotLeft}" y="${top - 18}" class="section-title">${escapeXml(localText(analysis.language, labelKey))}</text>${grid}${series('prior', '#64748b', true)}${series('current', '#2563eb', false)}`;
+  };
+  const subtitle = localText(analysis.language, 'reports.chart.yearOverYear.subtitle')
+    .replace('{priorYear}', String(comparison.priorYear))
+    .replace('{currentYear}', String(comparison.currentYear));
+  return svgDocument(`
+    <text x="${plotLeft}" y="43" class="title">${escapeXml(localText(analysis.language, 'reports.chart.yearOverYear.title'))}</text>
+    <text x="${plotLeft}" y="72" class="subtitle">${escapeXml(subtitle)}</text>
+    <line x1="${plotLeft}" y1="101" x2="${plotLeft + 35}" y2="101" stroke="#64748b" stroke-width="3" stroke-dasharray="8 6"/><text x="${plotLeft + 44}" y="106" class="legend">${comparison.priorYear}</text>
+    <line x1="${plotLeft + 150}" y1="101" x2="${plotLeft + 185}" y2="101" stroke="#2563eb" stroke-width="3"/><text x="${plotLeft + 194}" y="106" class="legend">${comparison.currentYear}</text>
+    ${panel('expense', 164, 315)}${panel('income', 397, 548)}${labels}
+  `);
 }
 
 export function renderWeeklyComparisonSvg(

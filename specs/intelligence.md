@@ -276,6 +276,9 @@ Every generated run renders three deterministic 1200 by 640 PNG artifacts:
 cash flow and balance, category allocation over time, and label allocation over
 time. `specs/intelligent-reports.md` defines their windows, exclusions, axes,
 localization, and current-period marker.
+Monthly runs may also render a `year-over-year` PNG when at least one complete
+calendar-month pair is comparable. It is optional in stored runs and on email
+delivery retry.
 
 Chart totals include sub-floor items. PNGs are stored with their report run and
 attached to one nodemailer message with stable CID references. SMTP passwords

@@ -33,6 +33,7 @@ const MAX_HISTORY_ROWS = 20_000;
 
 export type LoadedReportFacts = {
   readonly facts: readonly ReportFact[];
+  readonly coverageStart: string | null;
   readonly excluded: {
     readonly internal: { readonly structural: number; readonly semantic: number };
     readonly portfolio: number;
@@ -63,7 +64,34 @@ type FactTreatmentResult =
 
 export function loadReportFacts(input: LoadReportFactsInput): LoadedReportFacts {
   const rows = loadScopedRows(input);
-  return collectReportFacts(input, rows, loadFactResolutionContext(input, rows));
+  return collectReportFacts(
+    input,
+    rows,
+    loadFactResolutionContext(input, rows),
+    loadScopedCoverageStart(input),
+  );
+}
+
+function loadScopedCoverageStart(input: LoadReportFactsInput): string | null {
+  const { db, scope } = input;
+  const page = listEnrichedTransactionPage(
+    db,
+    createTransactionWebListFilters({
+      accountIds: scope.report.accountIds.length > 0 ? scope.report.accountIds : 'all',
+      classification: 'all',
+      endDate: scope.period.end,
+      transfers: 'all',
+      useCreditPurchaseDate: scope.useCreditPurchaseDate,
+    }),
+    {
+      limit: 1,
+      offset: 0,
+      sort: 'date:asc',
+      timeZone: scope.timeZone,
+      locale: scope.language,
+    },
+  );
+  return page.rows[0]?.local_date ?? null;
 }
 
 function loadScopedRows(input: LoadReportFactsInput): readonly EnrichedTransaction[] {
@@ -137,6 +165,7 @@ function collectReportFacts(
   input: LoadReportFactsInput,
   rows: readonly EnrichedTransaction[],
   context: FactResolutionContext,
+  coverageStart: string | null,
 ): LoadedReportFacts {
   const { scope } = input;
   const facts: ReportFact[] = [];
@@ -161,6 +190,7 @@ function collectReportFacts(
 
   return {
     facts,
+    coverageStart,
     excluded: {
       internal: {
         structural: excluded.structuralInternal,

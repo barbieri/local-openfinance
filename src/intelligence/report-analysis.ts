@@ -21,6 +21,7 @@ import type {
   ReportClassificationSource,
   ReportFact,
   ReportProfile,
+  YearOverYearComparison,
 } from './report-analysis-types.js';
 import { buildCandidates, selectMustReport } from './report-candidates.js';
 import { loadReportFacts } from './report-facts.js';
@@ -53,6 +54,7 @@ export type {
   ReportProfile,
   ReportStats,
   SpendingPattern,
+  YearOverYearComparison,
 } from './report-analysis-types.js';
 export { buildReportPeriodHref } from './report-candidates.js';
 
@@ -71,9 +73,15 @@ export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): Repo
     scope.period.start,
     -resolved.config.intelligence.rareLookbackYears * 366,
   );
+  const priorYearStart = `${Number(scope.period.end.slice(0, 4)) - 1}-01-01`;
   const loaded = loadReportFacts({
     ...input,
-    historyStart: previousPeriod.start < historyStart ? previousPeriod.start : historyStart,
+    historyStart:
+      [
+        previousPeriod.start,
+        historyStart,
+        ...(cadence === 'monthly' ? [priorYearStart] : []),
+      ].sort()[0] ?? historyStart,
   });
   const analyticalFacts = loaded.facts.filter((fact) => fact.treatment === 'reportable');
   const currentFacts = within(analyticalFacts, scope.period);
@@ -132,8 +140,52 @@ export function buildReportAnalysisPacket(input: BuildReportAnalysisInput): Repo
     classification: classificationCounts(currentCurrencyFacts),
     excluded: loaded.excluded,
     chart,
+    yearOverYear:
+      cadence === 'monthly'
+        ? buildYearOverYearComparison(currencyFacts, scope.period, loaded.coverageStart)
+        : null,
   };
   return { analysis, reportableFacts: analyticalFacts };
+}
+
+function buildYearOverYearComparison(
+  facts: readonly ReportFact[],
+  period: LocalDatePeriod,
+  coverageStart: string | null,
+): YearOverYearComparison {
+  const currentYear = Number(period.end.slice(0, 4));
+  const priorYear = currentYear - 1;
+  const endMonth = Number(period.end.slice(5, 7));
+  const totalsByMonth = new Map<string, { expenseCents: number; incomeCents: number }>();
+  for (const fact of facts) {
+    if (fact.direction === 'refund') continue;
+    const month = fact.date.slice(0, 7);
+    const totals = totalsByMonth.get(month) ?? { expenseCents: 0, incomeCents: 0 };
+    if (fact.direction === 'expense') totals.expenseCents += fact.cents;
+    else totals.incomeCents += fact.cents;
+    totalsByMonth.set(month, totals);
+  }
+  const months: YearOverYearComparison['months'] = Array.from({ length: endMonth }, (_, index) => {
+    const month = index + 1;
+    const key = String(month).padStart(2, '0');
+    const priorStart = `${priorYear}-${key}-01`;
+    const priorEnd = addDaysToLocalDateKey(shiftLocalDateKeyMonths(priorStart, 1), -1);
+    const currentStart = `${currentYear}-${key}-01`;
+    const currentEnd = addDaysToLocalDateKey(shiftLocalDateKeyMonths(currentStart, 1), -1);
+    if (coverageStart === null || priorEnd < coverageStart) {
+      return { kind: 'omitted', month, reason: 'unavailable' };
+    }
+    if (priorStart < coverageStart || currentStart < coverageStart || currentEnd > period.end) {
+      return { kind: 'omitted', month, reason: 'partial' };
+    }
+    return {
+      kind: 'comparable',
+      month,
+      prior: totalsByMonth.get(`${priorYear}-${key}`) ?? { expenseCents: 0, incomeCents: 0 },
+      current: totalsByMonth.get(`${currentYear}-${key}`) ?? { expenseCents: 0, incomeCents: 0 },
+    };
+  });
+  return { currentYear, priorYear, months };
 }
 
 export function selectAnalysisProfiles(

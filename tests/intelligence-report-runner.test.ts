@@ -600,6 +600,13 @@ describe('report runner', () => {
     expect(stored).not.toBeNull();
     expect(listIntelligenceRunChartNames(db, stored?.id ?? '')).toContain('monthly-comparison');
     expect(listIntelligenceRunChartNames(db, stored?.id ?? '')).not.toContain('cashflow');
+    expect(listIntelligenceRunChartNames(db, stored?.id ?? '')).not.toContain('year-over-year');
+    saveIntelligenceRunChart(db, {
+      runId: stored?.id ?? '',
+      name: 'year-over-year',
+      mimeType: 'image/png',
+      bytes: Uint8Array.from([1, 2, 3]),
+    });
 
     const successfulDelivery = vi.fn(async () => ({ sent: true, message: {} }));
     const retried = await executeReport(input, generator, successfulDelivery);
@@ -610,6 +617,12 @@ describe('report runner', () => {
         content: expect.objectContaining({
           charts: expect.arrayContaining([
             expect.objectContaining({ name: 'monthly-comparison' }),
+            expect.objectContaining({
+              name: 'year-over-year',
+              filename: 'report-year-over-year.png',
+              cid: 'report-year-over-year@local-openfinance',
+              altText: reportChartAltText('year-over-year', 'pt-BR'),
+            }),
             expect.objectContaining({ name: 'categories' }),
             expect.objectContaining({ name: 'labels' }),
           ]),
@@ -617,6 +630,12 @@ describe('report runner', () => {
       }),
     );
     expect(retried.emailSent).toBe(true);
+    expect(retried.charts.map((chart) => chart.name).slice(0, 4)).toEqual([
+      'monthly-comparison',
+      'year-over-year',
+      'categories',
+      'labels',
+    ]);
     expect(retried.run?.emailSentAt).not.toBeNull();
   });
 
