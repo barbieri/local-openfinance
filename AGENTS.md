@@ -147,8 +147,6 @@ local-openfinance/
 - React Doctor is configured by `doctor.config.json`. It is part of `pnpm run
   qa` and **blocks on warnings**. The `deslop/unused-dev-dependency` rule is
   off for CLI-only dev dependencies such as `pino-pretty`.
-  `auth-token-in-web-storage` is off because the localhost token is stored in
-  `sessionStorage` on purpose.
 - Subscribe to `window.location.hash` with `useSyncExternalStore`, not
   `useState` plus a `hashchange` `useEffect`.
 - Destructure `useQuery()` results (`data`, `isLoading`). Do not assign the
@@ -157,10 +155,14 @@ local-openfinance/
 
 ## Task routing and real-data evaluation
 
-- Unless the user explicitly opts out, use the project-local Poteto Mode
-  workflow (`.agents/skills/poteto-mode/SKILL.md`) through pstack for work that
-  is not clearly simple. It selects the applicable best-practice playbook and
-  any needed subagent work.
+- For work that is not clearly simple, agents must load the project-local
+  Poteto Mode workflow (`.agents/skills/poteto-mode/SKILL.md`) before work and
+  load and run the project-local Thermos workflow
+  (`.agents/skills/thermos/SKILL.md`) before handoff, unless the user explicitly
+  opts out. Do not wait for the user to name either workflow.
+- Poteto Mode and Thermos are installed with `npx skills` under
+  `.agents/skills/`. `skills-lock.json` locks both external installs. Do not
+  edit the installed skill files or their lock entries by hand.
 - Treat documentation-only changes, visual HTML/CSS adjustments, and simpler
   or trivial code as simple tasks. New specifications, architecture, modules,
   or changes that touch more than five files are not simple tasks.
@@ -313,14 +315,14 @@ commit.
 Do not publish `feat:` then `fix:` for the same slice. Reviewers should see
 the corrected slice, not the mistake and the patch.
 
-Before considering a change set done or opening its PR, run the project-local
-Thermos review workflow (`.agents/skills/thermos/SKILL.md`) for combined
-correctness, security, and code-quality review. Then use the project-local Make
-PR Easy to Review workflow (`.agents/skills/make-pr-easy-to-review/SKILL.md`) to
-prepare the history and reviewer guidance. Do not leave a commit that introduces
-behavior later fixed within the same change set; fold that correction into the
-introducing commit. Keep distinct follow-up improvements as separate commits
-when they are not corrections to the original behavior.
+Before considering a nontrivial change set done or opening its PR, follow the
+Poteto Mode and Thermos auto-load policy in "Task routing and real-data
+evaluation." Then use the project-local Make PR Easy to Review workflow
+(`.agents/skills/make-pr-easy-to-review/SKILL.md`) to prepare the history and
+reviewer guidance. Do not leave a commit that introduces behavior later fixed
+within the same change set; fold that correction into the introducing commit.
+Keep distinct follow-up improvements as separate commits when they are not
+corrections to the original behavior.
 
 ## Multi-slice agent work
 
