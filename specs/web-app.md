@@ -43,14 +43,41 @@ The web UI is for personal localhost use only.
 
 - Bind `127.0.0.1`.
 - Authenticate with `LOCAL_OPENFINANCE_WEB_TOKEN`.
-- The token can be passed through `?token=` or the login form.
-- The client stores the token in `sessionStorage` and keeps it in memory for
-  Bearer auth.
+- The token can be passed through `?token=` for first-run exchange or entered
+  in the login form. The client removes `?token=` from the URL before it sends
+  the login request.
+- `POST /api/auth/login` validates the token and sets a host-only, `HttpOnly`,
+  `SameSite=Strict` cookie scoped to `/api`. The cookie contains a random
+  256-bit session id, not the token, and lasts for 400 days unless the user
+  logs out first. SQLite stores only a domain-separated SHA-256 hash of the
+  session id. The hash also depends on the current web token, so token rotation
+  invalidates existing sessions. Logging in with an existing session rotates
+  it atomically so the previous cookie cannot be replayed. Login request bodies
+  are limited to 1 KiB before JSON parsing.
+- The browser client sends the cookie with same-origin requests. It does not
+  store the web token in Web Storage or add an `Authorization` header. On the
+  first load after an upgrade, it removes and exchanges the legacy
+  `local-openfinance.web-token` session entry before sending the login request.
+- `GET /api/auth/session` checks the persisted session and extends its 400-day
+  expiry without changing the session id. `POST /api/auth/logout` deletes the
+  persisted session before it expires the cookie. Logout is idempotent and
+  still expires stale or malformed cookies. A copied cookie cannot be replayed
+  after logout.
+- Cookie-authenticated `POST`, `PUT`, `PATCH`, and `DELETE` requests require
+  `X-Local-OpenFinance-CSRF: 1`. Login requires the same header. The API does
+  not allow cross-origin requests.
+- API clients can continue to use `Authorization: Bearer <token>`. A valid
+  Bearer request does not require the CSRF header on protected routes. The
+  idempotent logout route requires the header for every caller. An invalid
+  `Authorization` header fails with 401 on protected routes even if the request
+  also has a valid cookie.
 - The header menu after Sync contains language selection and log out.
 - The language defaults to the browser locale and an override is stored in
   `sessionStorage` for the current browser session.
-- Log out clears the auth token from `sessionStorage` and memory, then re-prompts.
-- 401 responses clear the token and re-prompt.
+- Log out calls the server, revokes the persisted session, expires the cookie,
+  clears cached API data, and re-prompts. The client keeps the authenticated UI
+  and reports the error when the request fails so the user can retry.
+- 401 responses clear cached API data and re-prompt.
 - Unknown `/api/*` routes return JSON 404 instead of the SPA `index.html`.
 
 This is not production-grade security.
@@ -200,6 +227,8 @@ Events are broadcast over:
 
 The shared `BackgroundJobsProvider` keeps the SSE subscription across tab
 navigation and polls `/api/jobs/current` every 2 seconds as fallback.
+It aborts the active SSE request when authentication ends or the provider
+unmounts. An intentional abort does not trigger a final status refresh.
 
 Multiple viewers are supported.
 

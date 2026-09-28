@@ -1,7 +1,7 @@
 import { useChat } from '@ai-sdk/react';
 import { useQuery } from '@tanstack/react-query';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import Markdown from 'react-markdown';
 import { toast } from 'sonner';
@@ -88,6 +88,12 @@ function ReportChatConversation({
       messages: [...initialMessages],
       transport,
     });
+  useEffect(
+    () => () => {
+      void stop();
+    },
+    [stop],
+  );
   const busy = status === 'submitted' || status === 'streaming';
   const failedTurn = error ? findFailedChatTurn(messages) : null;
   const clearChat = async () => {

@@ -136,8 +136,10 @@ On older macOS, `launchctl load -w` each plist instead of bootstrap/enable.
 
 ## Hand off
 
-Tell them to open `http://127.0.0.1:3847/?token=<token>` once. That is the
-app. Classify and reports live there. CLI `classify` is only required to
-*create* local annotation categories the first time.
+Tell them to open `http://127.0.0.1:3847/?token=<token>` once. The app removes
+the token from the URL and exchanges it for an `HttpOnly` cookie. They can use
+the top-right menu to log out and expire the cookie. Classify and reports live
+there. CLI `classify` is only required to *create* local annotation categories
+the first time.
 
 Personal localhost only. See `SECURITY.md`.

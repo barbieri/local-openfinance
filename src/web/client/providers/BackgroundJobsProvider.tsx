@@ -72,16 +72,25 @@ export function BackgroundJobsProvider({ children }: { readonly children: ReactN
       setPrecomputeUi((prev) =>
         applyRawJobEventToPrecomputeState(prev, event, snapshotRef.current),
       );
-    }, controller.signal).finally(() => {
-      void refreshFromServer();
-    });
+    }, controller.signal)
+      .catch(() => undefined)
+      .finally(() => {
+        if (subscriptionRef.current === controller) {
+          subscriptionRef.current = null;
+        }
+        if (!controller.signal.aborted) {
+          void refreshFromServer().catch(() => undefined);
+        }
+      });
   }, [refreshFromServer]);
 
   useEffect(() => {
-    void refreshFromServer().then((active) => {
+    let active = true;
+    void refreshFromServer().then((job) => {
       if (
-        active?.status === 'running' &&
-        (isSyncJobRelevant(active) || isPrecomputeJobRelevant(active))
+        active &&
+        job?.status === 'running' &&
+        (isSyncJobRelevant(job) || isPrecomputeJobRelevant(job))
       ) {
         attachSubscription();
       }
@@ -90,11 +99,12 @@ export function BackgroundJobsProvider({ children }: { readonly children: ReactN
     const poll = window.setInterval(() => {
       const subscribed =
         subscriptionRef.current !== null && !subscriptionRef.current.signal.aborted;
-      void refreshFromServer().then((active) => {
+      void refreshFromServer().then((job) => {
         if (
-          active?.status === 'running' &&
+          active &&
+          job?.status === 'running' &&
           !subscribed &&
-          (isSyncJobRelevant(active) || isPrecomputeJobRelevant(active))
+          (isSyncJobRelevant(job) || isPrecomputeJobRelevant(job))
         ) {
           attachSubscription();
         }
@@ -102,7 +112,10 @@ export function BackgroundJobsProvider({ children }: { readonly children: ReactN
     }, 2000);
 
     return () => {
+      active = false;
       window.clearInterval(poll);
+      subscriptionRef.current?.abort();
+      subscriptionRef.current = null;
     };
   }, [attachSubscription, refreshFromServer]);
 

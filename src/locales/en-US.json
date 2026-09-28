@@ -11,6 +11,7 @@
   "auth.tokenRequired": "Token is required",
   "auth.connect": "Connect",
   "auth.logout": "Log out",
+  "auth.logoutFailed": "Could not log out",
   "tabs.transactions": "Transactions",
   "tabs.reports": "Reports",
   "tabs.creditCards": "Credit Cards",

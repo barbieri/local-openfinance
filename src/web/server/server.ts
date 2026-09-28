@@ -3,7 +3,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { serve } from '@hono/node-server';
 import { Hono } from 'hono';
-import { cors } from 'hono/cors';
 import { HTTPException } from 'hono/http-exception';
 import { streamSSE } from 'hono/streaming';
 import {
@@ -75,7 +74,7 @@ import { formatSqliteUserMessage, isSqliteQueryError } from '../../db/sqlite-que
 import { logger } from '../../logger.js';
 import type { AnnotationAssistProposal } from '../../scoring/providers.js';
 import { resolveLocalTimeZone } from '../../utils/local-date.js';
-import { authMiddleware } from './auth.js';
+import { installAuth } from './auth.js';
 import { BackgroundJobManager } from './background-jobs.js';
 import { buildConnectionById, type WebServerContext } from './context.js';
 import { registerIntelligenceRoutes } from './intelligence-routes.js';
@@ -97,8 +96,7 @@ const DEFAULT_PORT = 3847;
 export function createWebApp(ctx: WebServerContext): Hono {
   const app = new Hono();
 
-  app.use('/api/*', cors());
-  app.use('/api/*', authMiddleware());
+  installAuth(app, ctx.db);
 
   app.get('/api/health', (c) => {
     return c.json({

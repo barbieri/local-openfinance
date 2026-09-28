@@ -1,35 +1,55 @@
+import { useQueryClient } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import {
-  bootstrapAuthFromUrl,
-  getAuthToken,
-  onAuthInvalidated,
-  setAuthToken,
-} from '../../lib/auth.js';
+import { type AuthState, bootstrapAuth, login, onAuthInvalidated } from '../../lib/auth.js';
 
 export function AuthGate({ children }: { readonly children: React.ReactNode }) {
   const { t } = useTranslation();
-  const [authed, setAuthed] = useState(() => bootstrapAuthFromUrl() || getAuthToken() !== null);
+  const queryClient = useQueryClient();
+  const [auth, setAuth] = useState<AuthState>({ kind: 'checking' });
   const [input, setInput] = useState('');
-  const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => onAuthInvalidated(() => setAuthed(false)), []);
+  useEffect(() => {
+    let active = true;
+    const unsubscribe = onAuthInvalidated((state) => {
+      queryClient.clear();
+      setAuth(state);
+    });
+    void bootstrapAuth().then((state) => {
+      if (active) {
+        setAuth(state);
+      }
+    });
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [queryClient]);
 
-  if (!authed) {
+  if (auth.kind === 'checking') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-8">
+        <p className="text-sm text-muted-foreground">…</p>
+      </div>
+    );
+  }
+
+  if (auth.kind !== 'authenticated') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-8">
         <form
           className="w-full max-w-sm space-y-3 rounded-lg border border-border bg-card p-6 shadow-sm"
-          onSubmit={(event) => {
+          onSubmit={async (event) => {
             event.preventDefault();
             const value = input.trim();
             if (!value) {
-              setError(t('auth.tokenRequired'));
+              setAuth({ kind: 'anonymous', error: t('auth.tokenRequired') });
               return;
             }
-            setAuthToken(value);
-            setError(null);
-            setAuthed(true);
+            setAuth({ kind: 'submitting' });
+            const next = await login(value);
+            setInput('');
+            setAuth(next);
           }}
         >
           <h1 className="text-lg font-semibold">{t('app.title')}</h1>
@@ -44,12 +64,16 @@ export function AuthGate({ children }: { readonly children: React.ReactNode }) {
               placeholder={t('auth.tokenPlaceholder')}
               value={input}
               onChange={(e) => setInput(e.target.value)}
+              disabled={auth.kind === 'submitting'}
             />
           </label>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {auth.kind === 'anonymous' && auth.error ? (
+            <p className="text-sm text-red-600">{auth.error}</p>
+          ) : null}
           <button
             type="submit"
             className="w-full rounded bg-primary px-3 py-2 text-sm font-medium text-primary-foreground"
+            disabled={auth.kind === 'submitting'}
           >
             {t('auth.connect')}
           </button>

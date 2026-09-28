@@ -1,18 +1,13 @@
-import { getAuthToken, invalidateAuth } from './auth.js';
+import { currentAuthGeneration, invalidateAuthForGeneration } from './auth.js';
+import { webRequest } from './request.js';
 
-export async function apiFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-  const authToken = getAuthToken();
-  if (!authToken) {
-    throw new Error('Not authenticated');
-  }
-  const headers = new Headers(init?.headers);
-  headers.set('Authorization', `Bearer ${authToken}`);
-  if (init?.body && !headers.has('Content-Type')) {
-    headers.set('Content-Type', 'application/json');
-  }
-  const response = await fetch(input, { ...init, headers });
+type FetchInput = Parameters<typeof fetch>[0];
+
+export async function apiFetch(input: FetchInput, init?: RequestInit): Promise<Response> {
+  const authGeneration = currentAuthGeneration();
+  const response = await webRequest(input, init);
   if (response.status === 401) {
-    invalidateAuth();
+    invalidateAuthForGeneration(authGeneration);
   }
   return response;
 }

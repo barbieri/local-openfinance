@@ -1,9 +1,10 @@
 import { lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MdExpandMore, MdMoreVert } from 'react-icons/md';
+import { toast } from 'sonner';
 import { AuthGate } from './components/auth/AuthGate.js';
 import { useReferenceData } from './hooks/use-entity-ref.js';
-import { invalidateAuth } from './lib/auth.js';
+import { type LogoutResult, logout } from './lib/auth.js';
 import { i18n, setUiLocale } from './lib/i18n.js';
 import { type TabId, useAppNavigation } from './lib/navigation.js';
 import { BackgroundJobsProvider } from './providers/BackgroundJobsProvider.js';
@@ -69,14 +70,20 @@ const TABS = [
 ] as const satisfies ReadonlyArray<{ readonly id: TabId; readonly labelKey: string }>;
 
 export function App() {
+  return (
+    <AuthGate>
+      <AuthenticatedApp />
+    </AuthGate>
+  );
+}
+
+function AuthenticatedApp() {
   useReferenceData();
 
   return (
-    <AuthGate>
-      <BackgroundJobsProvider>
-        <AppShell />
-      </BackgroundJobsProvider>
-    </AuthGate>
+    <BackgroundJobsProvider>
+      <AppShell />
+    </BackgroundJobsProvider>
   );
 }
 
@@ -89,14 +96,14 @@ function AppShell() {
       <header className="border-b border-border bg-primary px-4 py-3 text-primary-foreground">
         <div className="hidden flex-wrap items-center gap-3 sm:flex">
           <h1 className="text-lg font-semibold">{t('app.title')}</h1>
-          <DesktopTabNav tab={tab} setTab={setTab} onLogout={invalidateAuth} />
+          <DesktopTabNav tab={tab} setTab={setTab} onLogout={logout} />
         </div>
         <div className="sm:hidden">
           <MobileTabSelect
             tab={tab}
             setTab={setTab}
             isInvestmentPermalink={route.kind === 'investment'}
-            onLogout={invalidateAuth}
+            onLogout={logout}
           />
         </div>
       </header>
@@ -151,7 +158,7 @@ function DesktopTabNav({
 }: {
   readonly tab: TabId | null;
   readonly setTab: (tab: TabId) => void;
-  readonly onLogout: () => void;
+  readonly onLogout: () => Promise<LogoutResult>;
 }) {
   const { t } = useTranslation();
 
@@ -181,7 +188,7 @@ function MobileTabSelect({
   readonly tab: TabId | null;
   readonly setTab: (tab: TabId) => void;
   readonly isInvestmentPermalink: boolean;
-  readonly onLogout: () => void;
+  readonly onLogout: () => Promise<LogoutResult>;
 }) {
   const { t } = useTranslation();
 
@@ -217,8 +224,17 @@ function MobileTabSelect({
   );
 }
 
-function AppMenu({ onLogout }: { readonly onLogout: () => void }) {
+function AppMenu({ onLogout }: { readonly onLogout: () => Promise<LogoutResult> }) {
   const { t } = useTranslation();
+  const reportLogout = async () => {
+    const result = await onLogout();
+    if (!result.ok) {
+      toast.error(t('auth.logoutFailed'), { description: result.error });
+    }
+  };
+  const handleLogout = () => {
+    void reportLogout();
+  };
 
   return (
     <details className="relative">
@@ -245,7 +261,7 @@ function AppMenu({ onLogout }: { readonly onLogout: () => void }) {
         <button
           type="button"
           className="mt-1 flex w-full items-center rounded px-2 py-1.5 text-left text-sm hover:bg-accent"
-          onClick={onLogout}
+          onClick={handleLogout}
         >
           {t('auth.logout')}
         </button>

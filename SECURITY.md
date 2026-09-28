@@ -25,8 +25,23 @@ Do not commit `.env`, the SQLite file, or backup copies.
 ## Web UI
 
 The UI binds `127.0.0.1` only. `/api/*` requires `LOCAL_OPENFINANCE_WEB_TOKEN`.
-The token may be bootstrapped with `?token=` and is then stored in
-`sessionStorage` plus memory. Use Log out to clear both.
+The token may be bootstrapped with `?token=`. The client removes it from the URL
+before exchanging it for a host-only `HttpOnly` cookie. The cookie is
+scoped to `/api`, uses `SameSite=Strict`, and contains a random 256-bit session
+id instead of the raw token. SQLite stores only a domain-separated SHA-256 hash
+of that id. The session expires after 400 days without a successful session
+check. HTTPS responses also set `Secure`. A successful login atomically rotates
+any existing session cookie. Log out deletes the stored session and always
+expires the cookie, including when it is stale, so old cookies cannot be
+replayed. Rotating `LOCAL_OPENFINANCE_WEB_TOKEN` invalidates existing sessions.
+On the first load after upgrading from Web Storage authentication, the client
+removes the legacy session entry before exchanging its token for the cookie.
+
+Cookie-authenticated unsafe requests require the custom CSRF header documented
+in `specs/web-app.md`. The server does not enable cross-origin API access.
+Bearer authentication remains available for non-browser clients. If a request
+has an invalid `Authorization` header, the server does not fall back to its
+cookie.
 
 Optional Tailscale Service exposure still requires the token. Do not put the
 token in `web.publicBaseUrl` or in emailed permalinks.

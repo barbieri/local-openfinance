@@ -288,7 +288,7 @@ describe('intelligence store', () => {
       markApplied.run(version);
     }
 
-    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34, 35, 36]);
+    expect(migrateDatabase(db)).toEqual([28, 29, 30, 31, 32, 33, 34, 35, 36, 37]);
     const columns = db
       .prepare('PRAGMA table_info(intelligence_runs)')
       .all()

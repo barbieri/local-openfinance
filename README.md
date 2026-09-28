@@ -184,8 +184,10 @@ pnpm run local-openfinance maintain --config "$HOME/local-openfinance/expenses-c
 Personal localhost dashboard, **not** production-grade auth. See
 [`SECURITY.md`](./SECURITY.md).
 
-Open `http://127.0.0.1:3847/?token=YOUR_TOKEN` once. The token is stored in
-`sessionStorage`. Log out (icon after Sync) clears it.
+Open `http://127.0.0.1:3847/?token=YOUR_TOKEN` once. The app removes the token
+from the URL before the login request runs and stores an opaque session id in
+an `HttpOnly` cookie. The browser does not keep the token in Web Storage. Log out
+from the menu after Sync to expire the cookie.
 
 Tab order: Transactions → Reports → Credit Cards → Investments → Loans →
 Accounts → Connections → Categories → Labels → Classify triage → Sync.

@@ -43,6 +43,13 @@ The database stores:
   taxonomy id. Generated cache rows replace the previous policy when the
   localized taxonomy hash changes; override rows remain independent so a
   concurrent regeneration cannot erase a user choice.
+- Browser web sessions in `web_sessions`. Migration 037 adds this table and an
+  expiry index without changing existing rows or tables. Each row stores a
+  domain-separated SHA-256 session hash, its creation time, and its rolling
+  expiry. The raw cookie session id is never stored. Login inserts a row and
+  atomically replaces the row for a presented session, session checks extend
+  the expiry, logout deletes the row, and startup or a later login prunes
+  expired rows.
 
 Manual report runs may repeat for the same period. Scheduled runs store
 `trigger_kind = 'due'` and a cadence/local-date `due_key`; a partial unique
