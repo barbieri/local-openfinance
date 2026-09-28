@@ -10,8 +10,7 @@ import type {
   InvestmentAllocationBucket,
   InvestmentReportSnapshot,
 } from './investment-report-snapshot.js';
-import { buildMonthlyComparisonModel } from './monthly-comparison.js';
-import { isCompleteCalendarMonth } from './period.js';
+import { buildMonthlyComparisonModel, buildPeriodComparisonModel } from './monthly-comparison.js';
 import type { ReportAnalysis } from './report-analysis-types.js';
 import { buildReportCategoryIndex } from './report-taxonomy.js';
 
@@ -80,9 +79,10 @@ export function renderReportAnalysisCharts(
       reportChartAltText(
         analysis.period.cadence === 'monthly' ? 'monthly-comparison' : 'cashflow',
         analysis.language,
+        analysis.period.cadence,
       ),
-      analysis.period.cadence === 'monthly'
-        ? renderMonthlyComparisonSvg(analysis)
+      analysis.period.cadence === 'monthly' || analysis.period.cadence === 'weekly'
+        ? renderPeriodComparisonSvg(analysis, dataset)
         : renderCashflowSvg(dataset, analysis),
     ),
     toChart(
@@ -102,9 +102,16 @@ export function renderReportAnalysisCharts(
   ];
 }
 
-export function reportChartAltText(name: IntelligenceChart['name'], language: string): string {
+export function reportChartAltText(
+  name: IntelligenceChart['name'],
+  language: string,
+  cadence?: ReportAnalysis['period']['cadence'],
+): string {
   if (name === 'cashflow') {
-    return localText(language, 'reports.chart.cashflow');
+    return localText(
+      language,
+      cadence === 'weekly' ? 'reports.chart.weeklyComparison.alt' : 'reports.chart.cashflow',
+    );
   }
   if (name === 'monthly-comparison') {
     return localText(language, 'reports.chart.monthlyComparison.alt');
@@ -223,13 +230,34 @@ function stableColor(id: string): string {
 }
 
 export function renderMonthlyComparisonSvg(analysis: ReportAnalysis): string {
-  const { buckets, balances, expenses, income, trend } = buildMonthlyComparisonModel(
-    analysis.chart,
-  );
+  return renderPeriodComparisonSvg(analysis, { dailyBalance: [] });
+}
+
+export function renderWeeklyComparisonSvg(
+  dataset: TransactionChartDataset,
+  analysis: ReportAnalysis,
+): string {
+  return renderPeriodComparisonSvg(analysis, dataset);
+}
+
+function renderPeriodComparisonSvg(
+  analysis: ReportAnalysis,
+  dataset: Pick<TransactionChartDataset, 'dailyBalance'>,
+): string {
+  const cadence = analysis.period.cadence === 'weekly' ? 'weekly' : 'monthly';
+  const { buckets, periodBalances, expenses, income, completeBuckets, trend } =
+    buildPeriodComparisonModel(analysis.chart, cadence);
+  const finalBucket = buckets.at(-1);
+  const finalBalance =
+    cadence === 'monthly'
+      ? (buildMonthlyComparisonModel(analysis.chart).balances.at(-1) ?? 0)
+      : finalBucket
+        ? (dataset.dailyBalance.findLast((point) => point.date <= finalBucket.end)?.balance ?? 0)
+        : 0;
   const domain = paddedDomain([
     ...expenses,
     ...income,
-    ...balances,
+    ...periodBalances,
     ...(trend
       ? [
           trend.expense.intercept + trend.expense.slope * trend.startIndex,
@@ -247,42 +275,58 @@ export function renderMonthlyComparisonSvg(analysis: ReportAnalysis): string {
   const slot = (PLOT.right - PLOT.left) / Math.max(buckets.length, 1);
   const x = (index: number) => PLOT.left + slot * (index + 0.5);
   const y = (value: number) => scale(value, domain.min, domain.max, PLOT.bottom, PLOT.top);
-  const points = (series: readonly number[]) =>
-    series.map((value, index) => `${x(index)},${y(value)}`).join(' ');
   const currentBand = buckets.length
     ? `<rect x="${PLOT.left + slot * (buckets.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="#dbeafe" opacity="0.75"/>`
     : '';
-  const line = (series: readonly number[], color: string) =>
-    series.length
-      ? `<polyline points="${points(series)}" fill="none" stroke="${color}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>`
-      : '';
+  const barWidth = Math.max(4, slot * 0.2);
+  const bars = (series: readonly number[], offset: number, color: string) =>
+    series
+      .map((value, index) => {
+        const zero = y(0);
+        const valueY = y(value);
+        return `<rect x="${x(index) + offset - barWidth / 2}" y="${Math.min(zero, valueY)}" width="${barWidth}" height="${Math.abs(zero - valueY)}" fill="${color}"/>`;
+      })
+      .join('');
   const trendLine = (series: 'expense' | 'income', color: string) => {
     if (!trend) return '';
     const regression = trend[series];
-    return `<polyline class="monthly-trend" points="${x(trend.startIndex)},${y(regression.intercept + regression.slope * trend.startIndex)} ${x(trend.endIndex)},${y(regression.intercept + regression.slope * trend.endIndex)}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="10 8" opacity="0.75"/>`;
+    return `<polyline class="period-trend" points="${x(trend.startIndex)},${y(regression.intercept + regression.slope * trend.startIndex)} ${x(trend.endIndex)},${y(regression.intercept + regression.slope * trend.endIndex)}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="10 8" opacity="0.75"/>`;
   };
-  const lastBucket = buckets.at(-1);
-  const partialMonth = lastBucket && !isCompleteCalendarMonth(lastBucket);
+  const partial = finalBucket && !completeBuckets.at(-1);
   return svgDocument(`
-    <text x="${PLOT.left}" y="42" class="title">${escapeXml(localText(analysis.language, 'reports.chart.monthlyComparison.title'))}</text>
-    ${partialMonth ? `<text x="${PLOT.right}" y="42" class="subtitle" text-anchor="end">${escapeXml(formatPartialMonth(lastBucket.start, analysis.language))}</text>` : ''}
-    ${renderMonthlyComparisonLegend(analysis.language, trend !== null)}
+    <text x="${PLOT.left}" y="42" class="title">${escapeXml(localText(analysis.language, cadence === 'monthly' ? 'reports.chart.monthlyComparison.title' : 'reports.chart.cashflow.title'))}</text>
+    ${partial ? `<text x="${PLOT.right}" y="42" class="subtitle" text-anchor="end">${escapeXml(formatPartialPeriod(finalBucket.start, finalBucket.end, cadence, analysis.language))}</text>` : ''}
+    ${renderPeriodComparisonLegend(analysis.language, cadence, trend !== null)}
     ${currentBand}${renderDualGrid(domain.min, domain.max, analysis.currency, analysis.language, 'left')}
-    ${line(expenses, '#dc2626')}${line(income, '#2563eb')}${line(balances, '#d25f31')}
-    ${trendLine('expense', '#dc2626')}${trendLine('income', '#2563eb')}
-    ${renderBucketLabels({ ...analysis, chart: buckets })}${renderMonthlyComparisonAnnotations(analysis, trend?.expense.slope ?? null, trend?.income.slope ?? null, balances.at(-1) ?? 0)}
+    ${bars(expenses, -barWidth - 3, '#dc2626')}${bars(income, 0, '#16a34a')}${bars(periodBalances, barWidth + 3, '#2563eb')}
+    ${trendLine('expense', '#dc2626')}${trendLine('income', '#16a34a')}
+    ${renderBucketLabels({ ...analysis, chart: buckets })}${renderPeriodComparisonAnnotations(analysis, cadence, trend?.expense.slope ?? null, trend?.income.slope ?? null, finalBalance)}
   `);
 }
 
-function renderMonthlyComparisonLegend(language: string, showTrends: boolean): string {
+function renderPeriodComparisonLegend(
+  language: string,
+  cadence: 'weekly' | 'monthly',
+  showTrends: boolean,
+): string {
   const entries = [
     ['#dc2626', false, localText(language, 'reports.chart.monthlyComparison.legend.expenses')],
     ['#dc2626', true, localText(language, 'reports.chart.monthlyComparison.legend.expensesTrend')],
-    ['#2563eb', false, localText(language, 'reports.chart.monthlyComparison.legend.income')],
-    ['#2563eb', true, localText(language, 'reports.chart.monthlyComparison.legend.incomeTrend')],
-    ['#d25f31', false, localText(language, 'reports.chart.monthlyComparison.legend.balance')],
+    ['#16a34a', false, localText(language, 'reports.chart.monthlyComparison.legend.income')],
+    ['#16a34a', true, localText(language, 'reports.chart.monthlyComparison.legend.incomeTrend')],
+    [
+      '#2563eb',
+      false,
+      localText(
+        language,
+        cadence === 'monthly'
+          ? 'reports.chart.monthlyComparison.legend.balance'
+          : 'reports.chart.weeklyComparison.legend.balance',
+      ),
+    ],
+    ['#dbeafe', false, localText(language, 'reports.chart.legend.currentPeriod')],
   ] as const;
-  const widths = [125, 165, 175, 215, 0];
+  const widths = [125, 165, 175, 215, 180, 0];
   let offset = 0;
   return entries
     .map(([color, dashed, label], index) => ({ color, dashed, label, width: widths[index] ?? 180 }))
@@ -305,8 +349,26 @@ export function formatMonthlyTrendDelta(cents: number, currency: string, languag
   }).format(cents / 100)}/${localText(language, 'reports.chart.monthlyComparison.perMonth')}`;
 }
 
-function renderMonthlyComparisonAnnotations(
+function formatPeriodTrendDelta(
+  cents: number,
+  currency: string,
+  cadence: 'weekly' | 'monthly',
+  language: string,
+): string {
+  return `${getNumberFormat(language, {
+    style: 'currency',
+    currency,
+    notation: 'compact',
+    maximumFractionDigits: 1,
+    signDisplay: 'always',
+  }).format(
+    cents / 100,
+  )}/${localText(language, cadence === 'monthly' ? 'reports.chart.monthlyComparison.perMonth' : 'reports.chart.monthlyComparison.perWeek')}`;
+}
+
+function renderPeriodComparisonAnnotations(
   analysis: ReportAnalysis,
+  cadence: 'weekly' | 'monthly',
   expenseSlope: number | null,
   incomeSlope: number | null,
   finalBalance: number,
@@ -316,19 +378,24 @@ function renderMonthlyComparisonAnnotations(
     rows.push({
       color: '#dc2626',
       label: localText(analysis.language, 'reports.chart.monthlyComparison.delta.expenses'),
-      value: formatMonthlyTrendDelta(expenseSlope, analysis.currency, analysis.language),
+      value: formatPeriodTrendDelta(expenseSlope, analysis.currency, cadence, analysis.language),
     });
   }
   if (incomeSlope !== null) {
     rows.push({
-      color: '#2563eb',
+      color: '#16a34a',
       label: localText(analysis.language, 'reports.chart.monthlyComparison.delta.income'),
-      value: formatMonthlyTrendDelta(incomeSlope, analysis.currency, analysis.language),
+      value: formatPeriodTrendDelta(incomeSlope, analysis.currency, cadence, analysis.language),
     });
   }
   rows.push({
-    color: '#d25f31',
-    label: localText(analysis.language, 'reports.chart.monthlyComparison.finalBalance'),
+    color: '#2563eb',
+    label: localText(
+      analysis.language,
+      cadence === 'monthly'
+        ? 'reports.chart.monthlyComparison.finalBalance'
+        : 'reports.chart.monthlyComparison.finalAccountBalance',
+    ),
     value: formatCompactMoneyLocale(finalBalance, analysis.currency, analysis.language),
   });
   return rows
@@ -339,7 +406,26 @@ function renderMonthlyComparisonAnnotations(
     .join('');
 }
 
-function formatPartialMonth(start: string, language: string): string {
+function formatPartialPeriod(
+  start: string,
+  end: string,
+  cadence: 'weekly' | 'monthly',
+  language: string,
+): string {
+  if (cadence === 'weekly') {
+    const formatDate = (date: string) =>
+      getDateTimeFormat(language, {
+        month: 'short',
+        day: 'numeric',
+        timeZone: 'UTC',
+      })
+        .format(new Date(`${date}T12:00:00.000Z`))
+        .replace('.', '');
+    return localText(language, 'reports.chart.monthlyComparison.partialWeek').replace(
+      '{range}',
+      `${formatDate(start)}..${formatDate(end)}`,
+    );
+  }
   const month = getDateTimeFormat(language, {
     month: 'short',
     year: '2-digit',
@@ -402,7 +488,7 @@ function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAna
   `);
 }
 
-function renderStackedAllocationSvg(
+export function renderStackedAllocationSvg(
   analysis: ReportAnalysis,
   kind: 'category' | 'label',
   displayNames: Readonly<Record<string, string>> | undefined,
@@ -429,6 +515,9 @@ function renderStackedAllocationSvg(
   });
   const max = Math.max(...rows.map((row) => row.values.reduce((sum, value) => sum + value, 0)), 1);
   const slot = (PLOT.right - PLOT.left) / Math.max(rows.length, 1);
+  const currentBand = rows.length
+    ? `<rect x="${PLOT.left + slot * (rows.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="#dbeafe" opacity="0.75"/>`
+    : '';
   const bars = rows
     .map((row, index) => {
       let y = PLOT.bottom;
@@ -456,7 +545,7 @@ function renderStackedAllocationSvg(
         ? localText(analysis.language, 'reports.chart.categories.subtitle')
         : localText(analysis.language, 'reports.chart.labels.subtitle'),
     )}</text>
-    ${renderDualGrid(0, max, analysis.currency, analysis.language, 'left')}
+    ${currentBand}${renderDualGrid(0, max, analysis.currency, analysis.language, 'left')}
     ${bars}${renderBucketLabels(analysis)}${renderStackLegend(names)}
   `);
 }

@@ -179,27 +179,33 @@ Dry runs return the same metrics without persisting them.
 
 Each run stores three deterministic 1200 by 640 PNG charts:
 
-- Daily and weekly reports use `cashflow`, which shows income, analytical
-  expenses, and account balance. It uses a left currency axis for income and
-  expenses and a right currency axis for balance. The blue line is the combined
-  selected-account balance at the end of each bucket; it is not rebased to zero.
-- Monthly reports replace `cashflow` with `monthly-comparison`. One shared
-  currency axis plots red monthly expenses, blue monthly income, and the orange
-  running sum of income minus expenses from the first displayed month. Dashed
-  same-color least-squares trend lines accompany expenses and income. The chart
-  annotates each trend's monthly slope and the final cumulative balance.
+- Daily reports use `cashflow` for income, analytical expenses, and account
+  balance.
+- Weekly reports keep the `cashflow` name, filename, CID, and localized title.
+  Monthly reports keep `monthly-comparison` and its existing artifact identity.
+  Both use the same one-axis period-comparison renderer. Each bucket has grouped
+  red expense, green income, and blue period-balance bars. A blue bar is always
+  `incomeCents - expenseCents` for its bucket. Dashed red and green least-squares
+  trends cover complete buckets only. The chart annotates both slopes and its
+  final balance. Monthly final balance is the cumulative analytical
+  income-minus-expense balance from the first displayed month. Weekly final
+  balance comes from the selected accounts' `dailyBalance` value at the final
+  bucket end. Cumulative and account balances never affect a bar or the Y domain.
 - `categories` shows stacked parent-category spending by report period.
 - `labels` shows stacked parent-label spending by report period.
 
-A daily report shows 30 days. A weekly report shows 8 weeks. A monthly report
+A daily report shows 30 days. A weekly report preserves every supplied weekly
+bucket, including 12-week comparisons. A monthly report
 shows 12 months ending in the requested end month. A normal scheduled run ends
 on the last calendar day; an ad-hoc partial month ends at the requested date.
 Labels use `..` between range endpoints.
-Partial-month buckets are marked in the chart and table. Their raw amounts
-remain visible, but month-over-month cells involving them are unavailable and
-regression trends use only complete buckets at their original month positions.
-The latest displayed month has a blue background. Every chart has localized
-titles, legends, units, ticks, and axis labels. Monthly report bodies also append
+Partial week and month buckets are marked in the comparison chart. A partial-week
+note names the actual bucket range through its end date. Their raw amounts remain
+visible. Monthly month-over-month cells involving partial buckets
+are unavailable. Regression trends use complete buckets at their original
+positions. The latest bucket has a blue background in the comparison, category,
+and label charts. Every chart has localized titles, legends, units, ticks, and
+axis labels. Monthly report bodies also append
 a deterministic sanitized `report-table` with the same 12 months as the chart
 and localized expense, income, and cumulative-balance rows. The chart and runner
 both consume the pure model in `src/intelligence/monthly-comparison.ts`. It also includes monthly balance and signed

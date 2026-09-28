@@ -1,4 +1,4 @@
-import { isCompleteCalendarMonth } from './period.js';
+import { addDaysToLocalDateKey, isCompleteCalendarMonth } from './period.js';
 import type { ReportAnalysis } from './report-analysis-types.js';
 
 export type LinearRegression = { readonly slope: number; readonly intercept: number };
@@ -19,6 +19,59 @@ export type MonthlyComparisonModel = {
     readonly income: LinearRegression;
   } | null;
 };
+
+export type PeriodComparisonModel = {
+  readonly cadence: 'weekly' | 'monthly';
+  readonly buckets: ReportAnalysis['chart'];
+  readonly expenses: readonly number[];
+  readonly income: readonly number[];
+  readonly periodBalances: readonly number[];
+  readonly completeBuckets: readonly boolean[];
+  readonly trend: MonthlyComparisonModel['trend'];
+};
+
+export function buildPeriodComparisonModel(
+  chart: ReportAnalysis['chart'],
+  cadence: 'weekly' | 'monthly',
+): PeriodComparisonModel {
+  const buckets = cadence === 'monthly' ? chart.slice(-12) : chart;
+  const expenses = buckets.map((bucket) => bucket.expenseCents);
+  const income = buckets.map((bucket) => bucket.incomeCents);
+  const periodBalances = buckets.map((bucket) => bucket.incomeCents - bucket.expenseCents);
+  const completeBuckets = buckets.map((bucket) =>
+    cadence === 'monthly'
+      ? isCompleteCalendarMonth(bucket)
+      : addDaysToLocalDateKey(bucket.start, 6) === bucket.end,
+  );
+  const complete = buckets.flatMap((bucket, index) =>
+    completeBuckets[index]
+      ? [{ index, expense: bucket.expenseCents, income: bucket.incomeCents }]
+      : [],
+  );
+  const firstComplete = complete[0];
+  const lastComplete = complete.at(-1);
+  return {
+    cadence,
+    buckets,
+    expenses,
+    income,
+    periodBalances,
+    completeBuckets,
+    trend:
+      firstComplete && lastComplete && firstComplete !== lastComplete
+        ? {
+            startIndex: firstComplete.index,
+            endIndex: lastComplete.index,
+            expense: regressionPoints(
+              complete.map(({ index, expense }) => ({ index, value: expense })),
+            ),
+            income: regressionPoints(
+              complete.map(({ index, income }) => ({ index, value: income })),
+            ),
+          }
+        : null,
+  };
+}
 
 export function buildMonthlyComparisonModel(
   chart: ReportAnalysis['chart'],

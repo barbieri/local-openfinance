@@ -5,10 +5,14 @@ import {
   renderInvestmentAllocationCharts,
   renderMonthlyComparisonSvg,
   renderReportAnalysisCharts,
+  renderStackedAllocationSvg,
+  renderWeeklyComparisonSvg,
+  reportChartAltText,
 } from '../src/intelligence/charts.js';
 import type { InvestmentReportSnapshot } from '../src/intelligence/investment-report-snapshot.js';
 import {
   buildMonthlyComparisonModel,
+  buildPeriodComparisonModel,
   linearRegression,
 } from '../src/intelligence/monthly-comparison.js';
 import type { ReportAnalysis } from '../src/intelligence/report-analysis-types.js';
@@ -80,6 +84,52 @@ const analysis: ReportAnalysis = {
   ],
 };
 
+type SvgBar = Readonly<{ x: number; y: number; width: number; height: number }>;
+
+function svgBars(svg: string, color: string): readonly SvgBar[] {
+  return [
+    ...svg.matchAll(
+      new RegExp(
+        `<rect x="([^"]+)" y="([^"]+)" width="([^"]+)" height="([^"]+)" fill="${color}"/>`,
+        'g',
+      ),
+    ),
+  ].map((match) => ({
+    x: Number(match[1]),
+    y: Number(match[2]),
+    width: Number(match[3]),
+    height: Number(match[4]),
+  }));
+}
+
+function expectThreeNonOverlappingBars(
+  expenseBars: readonly SvgBar[],
+  incomeBars: readonly SvgBar[],
+  balanceBars: readonly SvgBar[],
+): void {
+  for (let index = 0; index < 12; index += 1) {
+    const expense = expenseBars[index];
+    const income = incomeBars[index];
+    const balance = balanceBars[index];
+    expect(expense).toBeDefined();
+    expect(income).toBeDefined();
+    expect(balance).toBeDefined();
+    if (!expense || !income || !balance) throw new Error(`missing bar ${index}`);
+    const [first, second, third] = [expense, income, balance].toSorted(
+      (left, right) => left.x - right.x,
+    );
+    if (!first || !second || !third) throw new Error(`incomplete bar group ${index}`);
+    expect(first.x + first.width).toBeLessThan(second.x);
+    expect(second.x + second.width).toBeLessThan(third.x);
+  }
+}
+
+function svgAxisLabels(svg: string): readonly string[] {
+  return [...svg.matchAll(/class="axis" text-anchor="end">([^<]+)</g)].map(
+    (match) => match[1] ?? '',
+  );
+}
+
 describe('intelligence PNG charts', () => {
   it('renders deterministic currency-separated investment pies only for multi-bucket dimensions', () => {
     const snapshot: InvestmentReportSnapshot = {
@@ -136,6 +186,15 @@ describe('intelligence PNG charts', () => {
     });
 
     expect(charts.map((chart) => chart.name)).toEqual(['cashflow', 'categories', 'labels']);
+    expect(charts[0]?.altText).toBe(
+      'Gastos, rendimentos, balanço do período e saldo final semanal',
+    );
+    expect(reportChartAltText('cashflow', 'pt-BR', 'daily')).toBe(
+      'Fluxo de caixa, saldo das contas e período atual',
+    );
+    expect(reportChartAltText('cashflow', 'en-US', 'weekly')).toBe(
+      'Weekly period expenses, income, period balance, and final account balance',
+    );
     for (const chart of charts) {
       const bytes = Buffer.from(chart.bytes);
       expect(bytes.subarray(0, 8)).toEqual(
@@ -185,15 +244,16 @@ describe('intelligence PNG charts', () => {
 
     const svg = renderMonthlyComparisonSvg(monthly);
     const dashedLines = [
-      ...svg.matchAll(/<polyline class="monthly-trend" points="([^"]+)"[^>]+stroke-dasharray/g),
+      ...svg.matchAll(/<polyline class="period-trend" points="([^"]+)"[^>]+stroke-dasharray/g),
     ];
     expect(dashedLines).toHaveLength(2);
     expect(dashedLines.every((match) => match[1]?.trim().split(' ').length === 2)).toBe(true);
     expect(dashedLines.every((match) => match[1]?.startsWith('182.29166666666666,'))).toBe(true);
     expect(dashedLines.every((match) => match[1]?.includes('1002.7083333333333,'))).toBe(true);
     expect(svg).toContain('stroke="#dc2626"');
-    expect(svg).toContain('stroke="#2563eb"');
-    expect(svg).toContain('stroke="#d25f31"');
+    expect(svg).toContain('stroke="#16a34a"');
+    expect(svg).toContain('fill="#2563eb"');
+    expect(svg).toContain('Balanço do mês');
     expect(svg).not.toContain('text-anchor="start"');
 
     const charts = renderReportAnalysisCharts(dataset, monthly);
@@ -216,6 +276,139 @@ describe('intelligence PNG charts', () => {
     expect(table).toContain('<th>Rendimentos MoM</th>');
     expect(table).toContain('<th>Gastos MoM</th>');
     expect(sanitizeReportBodyHtml(table)).toContain('<table class="report-table">');
+  });
+
+  it('uses period-balance weekly bars, a final account annotation, and a partial-week end date', () => {
+    const [firstBucket, secondBucket] = analysis.chart;
+    if (!firstBucket || !secondBucket) throw new Error('weekly fixture needs two buckets');
+    const svg = renderWeeklyComparisonSvg(dataset, {
+      ...analysis,
+      language: 'en-US',
+      chart: [
+        firstBucket,
+        secondBucket,
+        { ...secondBucket, start: '2026-08-17', end: '2026-08-20' },
+      ],
+    });
+
+    expect(svg).toContain('Balance and cash flow');
+    expect(svg).toContain('Partial week — data through Aug 17..Aug 20');
+    expect(svg).toContain('stroke="#dc2626"');
+    expect(svg).toContain('stroke="#16a34a"');
+    expect(svg).toContain('fill="#2563eb"');
+    expect(svg).toContain('R$800');
+    expect(svg.match(/class="period-trend"/g)).toHaveLength(2);
+  });
+
+  it('uses period balances for all weekly bars and only the last account balance annotation', () => {
+    const weekly: ReportAnalysis = {
+      ...analysis,
+      language: 'en-US',
+      chart: Array.from({ length: 12 }, (_, index) => ({
+        start: `2026-0${Math.floor(index / 4) + 1}-${String((index % 4) * 7 + 1).padStart(2, '0')}`,
+        end: `2026-0${Math.floor(index / 4) + 1}-${String((index % 4) * 7 + 7).padStart(2, '0')}`,
+        incomeCents: (index + 1) * 1_000,
+        expenseCents: (index + 1) * 2_000,
+        categoryTotals: {},
+        labelTotals: {},
+      })),
+    };
+    const model = buildPeriodComparisonModel(weekly.chart, 'weekly');
+    const finalBucket = weekly.chart.at(-1);
+    if (!finalBucket) throw new Error('weekly fixture needs a final bucket');
+    const svg = renderWeeklyComparisonSvg(
+      {
+        ...dataset,
+        dailyBalance: [
+          ...dataset.dailyBalance,
+          {
+            date: finalBucket.end,
+            credit: 0,
+            debit: 0,
+            balance: 80_000,
+            isEstimated: false,
+          },
+        ],
+      },
+      weekly,
+    );
+    const expenseBars = svgBars(svg, '#dc2626');
+    const incomeBars = svgBars(svg, '#16a34a');
+    const balanceBars = svgBars(svg, '#2563eb');
+
+    expect(model.buckets).toHaveLength(12);
+    expect(model.periodBalances).toEqual(weekly.chart.map((bucket) => -bucket.incomeCents));
+    expect(expenseBars).toHaveLength(12);
+    expect(incomeBars).toHaveLength(12);
+    expect(balanceBars).toHaveLength(12);
+    expect(balanceBars[0]?.height).not.toBe(balanceBars.at(-1)?.height);
+    expect(balanceBars[0]?.height).toBeCloseTo(10.09259259259261);
+    expect(balanceBars.at(-1)?.height).toBeCloseTo(121.11111111111114);
+    expect(svg).toContain('Weekly balance');
+    expect(svg).toContain('Final account balance = R$800');
+    expect(svgAxisLabels(svg)).not.toContain('R$800');
+    expect(svg).not.toMatch(/<polyline(?! class="period-trend")/);
+
+    expect(expenseBars[0]?.x).toBeCloseTo(156.91666666666666);
+    expect(expenseBars[0]?.width).toBeCloseTo(14.916666666666668);
+    expect(incomeBars[0]?.x).toBeCloseTo(174.83333333333331);
+    expect(incomeBars[0]?.width).toBeCloseTo(14.916666666666668);
+    expect(balanceBars[0]?.x).toBeCloseTo(192.75);
+    expect(balanceBars[0]?.width).toBeCloseTo(14.916666666666668);
+
+    expectThreeNonOverlappingBars(expenseBars, incomeBars, balanceBars);
+  });
+
+  it('keeps monthly blue bars to period balance while the annotation uses cumulative balance', () => {
+    const monthly: ReportAnalysis = {
+      ...analysis,
+      language: 'en-US',
+      period: {
+        start: '2026-01-01',
+        end: '2026-12-31',
+        cadence: 'monthly',
+        comparisonBasis: 'calendar-month',
+      },
+      chart: Array.from({ length: 12 }, (_, index) => ({
+        start: `2026-${String(index + 1).padStart(2, '0')}-01`,
+        end: new Date(Date.UTC(2026, index + 1, 0)).toISOString().slice(0, 10),
+        incomeCents: (index + 1) * 2_000,
+        expenseCents: (index + 1) * 1_000,
+        categoryTotals: {},
+        labelTotals: {},
+      })),
+    };
+    const model = buildPeriodComparisonModel(monthly.chart, 'monthly');
+    const svg = renderMonthlyComparisonSvg(monthly);
+    const expenseBars = svgBars(svg, '#dc2626');
+    const incomeBars = svgBars(svg, '#16a34a');
+    const balanceBars = svgBars(svg, '#2563eb');
+
+    expect(model.periodBalances).toEqual(monthly.chart.map((bucket) => bucket.incomeCents / 2));
+    expect(expenseBars).toHaveLength(12);
+    expect(incomeBars).toHaveLength(12);
+    expect(balanceBars).toHaveLength(12);
+    expect(balanceBars.at(-1)?.height).toBeCloseTo(181.66666666666669);
+    expect(svg).toContain('Final cumulative balance = R$780');
+    expect(svgAxisLabels(svg)).not.toContain('R$780');
+    expect(svg).not.toMatch(/<polyline(?! class="period-trend")/);
+
+    expect(expenseBars[0]?.x).toBeCloseTo(156.91666666666666);
+    expect(expenseBars[0]?.width).toBeCloseTo(14.916666666666668);
+    expect(incomeBars[0]?.x).toBeCloseTo(174.83333333333331);
+    expect(incomeBars[0]?.width).toBeCloseTo(14.916666666666668);
+    expect(balanceBars[0]?.x).toBeCloseTo(192.75);
+    expect(balanceBars[0]?.width).toBeCloseTo(14.916666666666668);
+
+    expectThreeNonOverlappingBars(expenseBars, incomeBars, balanceBars);
+  });
+
+  it('marks the current category and label periods behind their stacked bars', () => {
+    const category = renderStackedAllocationSvg(analysis, 'category', {});
+    const label = renderStackedAllocationSvg(analysis, 'label', {});
+
+    expect(category).toContain('fill="#dbeafe" opacity="0.75"');
+    expect(label).toContain('fill="#dbeafe" opacity="0.75"');
   });
 
   it('renders signed monthly balances and month-over-month changes', () => {
@@ -313,7 +506,7 @@ describe('intelligence PNG charts', () => {
     const table = buildMonthlyComparisonTable(monthly);
     const svg = renderMonthlyComparisonSvg(monthly);
     const trendLines = [
-      ...svg.matchAll(/<polyline class="monthly-trend" points="([^"]+)"[^>]+stroke-dasharray/g),
+      ...svg.matchAll(/<polyline class="period-trend" points="([^"]+)"[^>]+stroke-dasharray/g),
     ];
 
     expect(model.completeMonths).toEqual([true, true, false]);
@@ -381,7 +574,7 @@ describe('intelligence PNG charts', () => {
     const model = buildMonthlyComparisonModel(monthly.chart);
     const svg = renderMonthlyComparisonSvg(monthly);
     const trendLines = [
-      ...svg.matchAll(/<polyline class="monthly-trend" points="([^"]+)"[^>]+stroke-dasharray/g),
+      ...svg.matchAll(/<polyline class="period-trend" points="([^"]+)"[^>]+stroke-dasharray/g),
     ];
 
     expect(model.completeMonths).toEqual([false, true, true, false]);
