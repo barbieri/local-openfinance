@@ -28,6 +28,20 @@ documentation in the same change before finishing the task.
 - Do not duplicate existing guidance. Revise or remove stale bullets when
   behavior changes.
 
+After a check fails or a review comment reveals a lesson, reflect on whether
+the lesson will prevent a repeat. If it will, update the source that owns it
+before finishing. Keep transient failures out of permanent guidance. In a
+commit series, put general lessons in the first commit and fold a
+slice-specific lesson into the commit that introduced that slice.
+
+Never change non-owned installed skills in `~/.agent/skills/`,
+`~/.agents/skills/`, or project `.agents/skills/` as part of self-update when
+a skill lock tracks them. Report upstream corrections instead. A dependency
+refresh with `npx skills update` is separate maintenance. For skills owned by
+Gustavo, make the source change in
+`barbieri-playground/skills/`, open a pull request for review, and update
+downstream installations only after that pull request is merged.
+
 Before finishing any task that touches config, including schema, loader,
 `config.example.json`, or config behavior, check that `README.md` documents
 every field and constraint in `schemas/config.schema.json`. Update `README.md`
@@ -160,12 +174,34 @@ local-openfinance/
   load and run the project-local Thermos workflow
   (`.agents/skills/thermos/SKILL.md`) before handoff, unless the user explicitly
   opts out. Do not wait for the user to name either workflow.
-- Poteto Mode and Thermos are installed with `npx skills` under
+- For Codex, use native subagents for upstream `Task` roles. In Thermos,
+  give one reviewer `.agents/skills/thermo-nuclear-review/SKILL.md` and another
+  `.agents/skills/thermo-nuclear-code-quality-review/SKILL.md`, then synthesize
+  their findings.
+- The two workflows above are installed with `npx skills` under
   `.agents/skills/`. `skills-lock.json` locks both external installs. Do not
   edit the installed skill files or their lock entries by hand.
+- If `npx skills update` skips `ai-sdk`, `pr-review-canvas`, or
+  `thermo-nuclear-code-quality-review` with a multiple-path warning, refresh
+  them from their skills.sh sources with:
+
+  ```sh
+  npx skills add vercel-labs/ai -s ai-sdk -y --copy
+  npx skills add cursor/plugins -s pr-review-canvas -s thermo-nuclear-code-quality-review -y --copy
+  ```
+
+  The CLI updates `skills-lock.json` and the installed copies. Review both
+  before committing.
 - Treat documentation-only changes, visual HTML/CSS adjustments, and simpler
   or trivial code as simple tasks. New specifications, architecture, modules,
   or changes that touch more than five files are not simple tasks.
+- Use `.agents/skills/code-review/SKILL.md` to review a branch against its
+  originating issue or specification when one exists. The paired setup guide
+  is `.agents/skills/setup-matt-pocock-skills/SKILL.md`.
+- Add a test only when it covers behavior or a regression that existing tests
+  do not cover. Do not add duplicate assertions, mirrored examples, or tests
+  that only repeat an existing path. State the uncovered behavior the test
+  proves.
 - When a user asks to check with real data, reading the available configuration
   and database and sending that data to the configured model provider is
   authorized and expected. This includes gitignored and `tmp/` artifacts, or
@@ -245,26 +281,15 @@ must stay behaviorally identical.
 - `tests/config.test.ts` asserts the resolved configs are equal and that
   defaulted leaves are present only in the full file.
 
-Bundled analysis instructions live in `src/llm/prompts/` and are referenced
-via `@DEFAULT_BASE_INSTRUCTIONS@`. The CLI bundle copies those files to
-`dist/bundle/prompts/` (runtime `readFileSync`, not inlined). Topic overlays
-live beside the example config (`examples/expenses/`). Named-report prompts
-belong in `reports[].prompts`; singular `report` contains shared filters only.
-When you change default prompt text, edit the markdown files, not TypeScript
-string literals.
+See `specs/intelligence.md` for prompt loading, topic overlays, and named
+report behavior. Edit source markdown prompts under `src/llm/prompts/` when
+changing bundled default instructions.
 
-## Web UI implementation guidance
+## React implementation guidance
 
-- Web implementation lives in `src/web/`.
-- The stack is Vite, React, and Hono.
-- Dev command: `pnpm run dev:web`.
-- Production path: `pnpm run build`, then `serve --config ...`.
-- Tab pages are lazy-loaded in `src/web/client/App.tsx` with `React.lazy` and
-  `Suspense`.
-- Web API route modules live under `src/web/server/`.
-- Transaction list, chart, and search routes share
-  `parseTransactionFiltersFromRequest()` in `src/web/server/transaction-request.ts`.
-- Mockups live in `docs/web-mockups/index.html`.
+See `specs/web-app.md` and its tab-specific specs for routes, architecture, and
+web behavior.
+
 - For React form/dialog state, when several scalar values are reset together,
   store them in one object state with readonly fields and update through one
   setter.
@@ -286,17 +311,18 @@ delete the script when done.
 
 Command behavior is specified in `specs/cli-commands.md`.
 
-`maintain` is the durable daily backup + sync entrypoint. It writes a dated
-`VACUUM INTO` copy, prunes backups older than 30 local days, then syncs and
-precomputes missing classify suggestions. `--serve` starts the web UI after
-backup/prune, then starts the same background sync job as the Sync tab so the
-server is listening during the long sync. Example user systemd units live in
-`examples/systemd/`.
+Example systemd units live in `examples/systemd/`.
 
 ## Commit series for review
 
 Each slice in a to-be-submitted series should be **one commit** with the
 finished behavior of that slice.
+
+Before a pull request, inspect the complete branch range from its merge-base
+with `master`. A later commit in the branch must not repair or delete code
+introduced by an earlier branch commit. Use a fixup and autosquash that change
+into its introducing commit. Keep independent improvements as separate
+commits, and keep fixes to code already on `master` separate.
 
 When QA or an independent review finds bugs in a slice already committed on
 the branch, do **not** leave a follow-up `fix:` commit in the published
@@ -315,14 +341,13 @@ commit.
 Do not publish `feat:` then `fix:` for the same slice. Reviewers should see
 the corrected slice, not the mistake and the patch.
 
-Before considering a nontrivial change set done or opening its PR, follow the
-Poteto Mode and Thermos auto-load policy in "Task routing and real-data
-evaluation." Then use the project-local Make PR Easy to Review workflow
-(`.agents/skills/make-pr-easy-to-review/SKILL.md`) to prepare the history and
-reviewer guidance. Do not leave a commit that introduces behavior later fixed
-within the same change set; fold that correction into the introducing commit.
-Keep distinct follow-up improvements as separate commits when they are not
-corrections to the original behavior.
+Before a nontrivial change is ready for a pull request, complete the review
+routing above. Then use
+`.agents/skills/make-pr-easy-to-review/SKILL.md` to prepare the history and
+reviewer guidance. For a messy private linear series, use
+`.agents/skills/git-history-cleanup/SKILL.md`. Do not leave a commit that
+introduces behavior later fixed within the same change set. Fold that
+correction into its introducing commit. Keep distinct improvements separate.
 
 ## Multi-slice agent work
 
@@ -339,18 +364,7 @@ For a large feature split into slices (see `specs/intelligence.md`):
 - Fold review fixes with `--fixup` as above before starting the next slice
   when practical, and always before the series is submitted.
 
-## Intelligence
+## Intelligence behavior
 
-Product behavior and completed slice history: `specs/intelligence.md`.
-
-- `#/transaction/<id>` (singular) is a permalink, not a header tab.
-- Reports is one header tab. `#/reports` lists configured reports;
-  `#/reports/<id>` is that report’s current page. Chat and Memory nest
-  under the report id. See `specs/intelligence.md`.
-- Briefing and prompts must not hardcode place names (no Ubatuba).
-- Email is `run --send` with nodemailer CID PNGs. Due jobs use `run --due`.
-  Do not use run-and-notify as the success path (no attachments).
-- Live eval on `examples/tmp/openfinance.sqlite` (follow a symlink) with
-  the configured LLM is **authorized**. Do not commit the database, `.env`,
-  or SMTP passwords.
-- The named-report slice series is complete; no report coding slice remains.
+See `specs/intelligence.md` for report routes, prompt rules, email delivery,
+live evaluation, and implementation history.
