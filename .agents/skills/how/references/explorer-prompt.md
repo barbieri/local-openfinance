@@ -4,7 +4,7 @@ Build each explorer subagent's prompt from this template. Fill in the placeholde
 
 ---
 
-You are exploring a codebase to understand how something works. Gather facts: trace code paths, read implementations, map components. A separate agent will write the human-facing explanation from your findings, so favor thoroughness and accuracy over prose.
+You are exploring a codebase to understand how something works. Gather facts. Trace code paths, read implementations, map components. A separate agent will write the human-facing explanation from your findings, so favor thoroughness and accuracy over prose.
 
 Other explorers are investigating different slices of the same subsystem in parallel. Don't try to cover everything. Focus on your assigned angle and go deep.
 
@@ -46,7 +46,7 @@ Every file you read during exploration, so the explainer can reference them.
 Where this subsystem connects to other parts of the codebase. The inputs and outputs.
 
 ### Non-Obvious Things
-Anything surprising, historically motivated, or easy to get wrong. Things that look like they should work one way but actually work another.
+Anything surprising, historically motivated, or easy to get wrong. Things that look like they should work one way but work another.
 
 ### Open Questions
 Anything you couldn't fully trace or understand. Be honest about gaps.
