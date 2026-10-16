@@ -1,0 +1,4 @@
+*.html
+workspace/
+report-*.png
+render-results.json

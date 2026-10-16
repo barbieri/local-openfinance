@@ -3,8 +3,10 @@ import nodemailer, { type SendMailOptions } from 'nodemailer';
 import type SMTPTransport from 'nodemailer/lib/smtp-transport/index.js';
 import type { ResolvedAppConfig } from '../types.js';
 import type { IntelligenceChart } from './charts.js';
+import { GUSTAVO_STYLE_CSS } from './gustavo-style.js';
 import type { LocalDatePeriod } from './period.js';
 import { formatLocalizedReportPeriod, type ReportDateStyle } from './report-date-format.js';
+import { REPORT_HTML_CSS } from './report-html-contract.js';
 
 type ResolvedSmtpConfig = ResolvedAppConfig['notify']['smtp'];
 
@@ -71,7 +73,7 @@ function toEmailContent(content: ReportEmailContent): EmailContent {
   const period = formatLocalizedReportPeriod(content.period, content.dateStyle, content.language);
   return {
     subject: content.subject,
-    html: `<header style="margin:0 0 24px"><p style="margin:0 0 6px;color:#64748b">${escapeHtml(period)}</p><p style="margin:0;font-size:24px;font-weight:700">${escapeHtml(content.reportName)}</p></header>${content.html}`,
+    html: `<header style="margin:0 0 24px"><p style="margin:0 0 6px;color:var(--text-muted)">${escapeHtml(period)}</p><p style="margin:0;font-size:24px;font-weight:500">${escapeHtml(content.reportName)}</p></header>${content.html}`,
     text: `${content.reportName}\n${period}\n\n${content.text}`,
     attachments: content.charts,
     language: content.language,
@@ -155,14 +157,14 @@ function renderEmailHtml(content: EmailContent): string {
   const chartHtml = content.attachments
     .map(
       (chart) =>
-        `<figure style="margin:24px 0"><img src="cid:${escapeHtml(chart.cid)}" alt="${escapeHtml(chart.altText)}" style="display:block;width:100%;max-width:1200px;height:auto" /></figure>`,
+        `<figure style="margin:24px 0;background:var(--surface);color-scheme:light"><img src="cid:${escapeHtml(chart.cid)}" alt="${escapeHtml(chart.altText)}" style="display:block;width:100%;max-width:1200px;height:auto" /></figure>`,
     )
     .join('');
   return `<!doctype html>
 <html lang="${escapeHtml(content.language ?? 'en')}">
-  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /></head>
-  <body style="margin:0;background:#f8fafc;color:#0f172a;font-family:Arial,sans-serif">
-    <main style="max-width:1200px;margin:0 auto;padding:32px;background:#ffffff">
+  <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width" /><meta name="color-scheme" content="light dark" /><style>${GUSTAVO_STYLE_CSS}\n${REPORT_HTML_CSS}</style></head>
+  <body>
+    <main>
       ${content.html}
       ${chartHtml}
     </main>

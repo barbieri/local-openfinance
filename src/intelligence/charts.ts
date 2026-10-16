@@ -6,6 +6,7 @@ import type { TransactionChartDataset } from '../db/transaction-charts.js';
 import { getDateTimeFormat, getNumberFormat } from '../utils/intl-formatters.js';
 import { resolveCategoryTranslationEnabled } from '../utils/locale-resolve.js';
 import { localText } from '../utils/locale-text.js';
+import { CHART_FAMILIES, LIGHT_TOKENS } from './gustavo-style.js';
 import type {
   InvestmentAllocationBucket,
   InvestmentReportSnapshot,
@@ -17,7 +18,14 @@ import { buildReportCategoryIndex } from './report-taxonomy.js';
 const WIDTH = 1_200;
 const HEIGHT = 640;
 const PLOT = { left: 145, top: 104, right: 1_040, bottom: 540 } as const;
-const COLORS = ['#0f766e', '#2563eb', '#7c3aed', '#c2410c', '#be123c', '#4d7c0f'] as const;
+const COST_COLORS = (['amber', 'orange', 'rose'] as const).flatMap((family) => {
+  const shades = CHART_FAMILIES[family];
+  return [shades[3], shades[4]];
+});
+const INVESTMENT_COLORS = (['indigo', 'blue', 'teal'] as const).flatMap((family) => {
+  const shades = CHART_FAMILIES[family];
+  return [shades[3], shades[4]];
+});
 const require = createRequire(import.meta.url);
 const FONT_FILES = [
   require.resolve('dejavu-fonts-ttf/ttf/DejaVuSans.ttf'),
@@ -185,6 +193,12 @@ function renderInvestmentAllocationChart(
       const y = 145 + row * panelHeight;
       const buckets = compactInvestmentBuckets(currency[dimension], language);
       const total = buckets.reduce((sum, bucket) => sum + bucket.cents, 0);
+      // Resolve each holding to a distinct investment color so slices in one pie
+      // (and its legend) never collide on the same hue.
+      const assignedInvestmentColors = assignColors(
+        buckets.map((bucket) => bucket.id),
+        INVESTMENT_COLORS,
+      );
       let angle = -Math.PI / 2;
       return [
         `<text x="${x}" y="${y}" class="section-title">${escapeXml(currency.currency)}</text>`,
@@ -193,7 +207,8 @@ function renderInvestmentAllocationChart(
           const path = pieSlice(x + 90, y + 85, 62, angle, next);
           angle = next;
           const legendY = y + 164 + index * 18;
-          return `<path d="${path}" fill="${stableColor(bucket.id)}"/><rect x="${x}" y="${legendY - 11}" width="10" height="10" fill="${stableColor(bucket.id)}"/><text x="${x + 15}" y="${legendY}" class="legend">${escapeXml(truncate(bucket.label, 24))} ${escapeXml(formatCompactMoneyLocale(bucket.cents, currency.currency, language))}</text>`;
+          const color = stableColor(bucket.id, assignedInvestmentColors);
+          return `<path d="${path}" fill="${color}"/><rect x="${x}" y="${legendY - 11}" width="10" height="10" fill="${color}"/><text x="${x + 15}" y="${legendY}" class="legend">${escapeXml(truncate(bucket.label, 24))} ${escapeXml(formatCompactMoneyLocale(bucket.cents, currency.currency, language))}</text>`;
         }),
       ].join('');
     })
@@ -241,10 +256,57 @@ function pieSlice(cx: number, cy: number, radius: number, start: number, end: nu
   return `M ${cx} ${cy} L ${startX} ${startY} A ${radius} ${radius} 0 ${end - start > Math.PI ? 1 : 0} 1 ${endX} ${endY} Z`;
 }
 
-function stableColor(id: string): string {
+function hashId(id: string): number {
   let hash = 0;
   for (const character of id) hash = (hash * 31 + (character.codePointAt(0) ?? 0)) >>> 0;
-  return `hsl(${hash % 360} 58% 42%)`;
+  return hash;
+}
+
+/**
+ * Assign one distinct color per id.
+ *
+ * A plain hash modulo the palette length collides: two categories in the same
+ * chart can land on the same color and merge visually. Instead, resolve
+ * collisions by probing forward through the palette, so ids that hash to the
+ * same index still receive different colors within one chart. The mapping
+ * stays stable for a given id order, which is preserved across periods because
+ * callers sort ids deterministically.
+ */
+function assignColors(ids: readonly string[], palette: readonly string[]): Map<string, string> {
+  const assigned = new Map<string, string>();
+  const used = new Set<string>();
+  for (const id of ids) {
+    const preferred = palette.length === 0 ? undefined : palette[hashId(id) % palette.length];
+    let color = preferred;
+    if (color === undefined || used.has(color)) {
+      const start = palette.length === 0 ? 0 : hashId(id) % palette.length;
+      color = palette.find((_candidate, offset) => {
+        const index = (start + offset) % Math.max(palette.length, 1);
+        return !used.has(palette[index] ?? '');
+      });
+    }
+    if (color === undefined) {
+      color = palette[0] ?? '#64748b';
+    }
+    used.add(color);
+    assigned.set(id, color);
+  }
+  return assigned;
+}
+
+function costColor(id: string, assigned?: Map<string, string>): string {
+  if (id === 'other') return CHART_FAMILIES.slate[3];
+  return (
+    assigned?.get(id) ?? COST_COLORS[hashId(id) % COST_COLORS.length] ?? CHART_FAMILIES.amber[3]
+  );
+}
+
+function stableColor(id: string, assigned?: Map<string, string>): string {
+  return (
+    assigned?.get(id) ??
+    INVESTMENT_COLORS[hashId(id) % INVESTMENT_COLORS.length] ??
+    CHART_FAMILIES.indigo[3]
+  );
 }
 
 export function renderMonthlyComparisonSvg(analysis: ReportAnalysis): string {
@@ -279,7 +341,7 @@ export function renderYearOverYearSvg(analysis: ReportAnalysis): string {
     const grid = Array.from({ length: 3 }, (_, index) => {
       const value = (max * index) / 2;
       const py = y(value);
-      return `<line x1="${plotLeft}" y1="${py}" x2="${plotRight}" y2="${py}" stroke="#e2e8f0"/><text x="${plotLeft - 12}" y="${py + 5}" class="axis" text-anchor="end">${escapeXml(formatCompactMoneyLocale(value, analysis.currency, analysis.language))}</text>`;
+      return `<line x1="${plotLeft}" y1="${py}" x2="${plotRight}" y2="${py}" stroke="${LIGHT_TOKENS.border}"/><text x="${plotLeft - 12}" y="${py + 5}" class="axis" text-anchor="end">${escapeXml(formatCompactMoneyLocale(value, analysis.currency, analysis.language))}</text>`;
     }).join('');
     const series = (year: 'prior' | 'current', color: string, dashed: boolean) => {
       const runs: (typeof comparable)[] = [];
@@ -298,7 +360,7 @@ export function renderYearOverYearSvg(analysis: ReportAnalysis): string {
       const points = comparable
         .map(
           (month) =>
-            `<circle class="yoy-point" data-year="${year}" cx="${x(month.month)}" cy="${y(month[year][field])}" r="5" fill="${color}" stroke="#ffffff" stroke-width="2"/>`,
+            `<circle class="yoy-point" data-year="${year}" cx="${x(month.month)}" cy="${y(month[year][field])}" r="5" fill="${color}" stroke="${LIGHT_TOKENS.surface}" stroke-width="2"/>`,
         )
         .join('');
       return lines + points;
@@ -307,16 +369,22 @@ export function renderYearOverYearSvg(analysis: ReportAnalysis): string {
       direction === 'expense'
         ? 'reports.chart.yearOverYear.expenses'
         : 'reports.chart.yearOverYear.income';
-    return `<text x="${plotLeft}" y="${top - 18}" class="section-title">${escapeXml(localText(analysis.language, labelKey))}</text>${grid}${series('prior', '#64748b', true)}${series('current', '#2563eb', false)}`;
+    return `<text x="${plotLeft}" y="${top - 18}" class="section-title">${escapeXml(localText(analysis.language, labelKey))}</text>${grid}${series('prior', CHART_FAMILIES.slate[3], true)}${series('current', direction === 'expense' ? CHART_FAMILIES.amber[3] : CHART_FAMILIES.green[3], false)}`;
   };
   const subtitle = localText(analysis.language, 'reports.chart.yearOverYear.subtitle')
     .replace('{priorYear}', String(comparison.priorYear))
     .replace('{currentYear}', String(comparison.currentYear));
+  // The legend must describe the series actually drawn: each panel plots the
+  // prior year in slate and the current year in the panel's own series color
+  // (expenses amber, income green), so name both per panel instead of a single
+  // stale blue key that no panel contains.
+  const legendEntry = (color: string, label: string, offset: number): string =>
+    `<line x1="${plotLeft + offset}" y1="101" x2="${plotLeft + offset + 35}" y2="101" stroke="${color}" stroke-width="3"/><text x="${plotLeft + offset + 44}" y="106" class="legend">${escapeXml(label)}</text>`;
+  const expenseLegend = `${legendEntry(CHART_FAMILIES.slate[3], String(comparison.priorYear), 0)}${legendEntry(CHART_FAMILIES.amber[3], String(comparison.currentYear), 300)}`;
   return svgDocument(`
     <text x="${plotLeft}" y="43" class="title">${escapeXml(localText(analysis.language, 'reports.chart.yearOverYear.title'))}</text>
     <text x="${plotLeft}" y="72" class="subtitle">${escapeXml(subtitle)}</text>
-    <line x1="${plotLeft}" y1="101" x2="${plotLeft + 35}" y2="101" stroke="#64748b" stroke-width="3" stroke-dasharray="8 6"/><text x="${plotLeft + 44}" y="106" class="legend">${comparison.priorYear}</text>
-    <line x1="${plotLeft + 150}" y1="101" x2="${plotLeft + 185}" y2="101" stroke="#2563eb" stroke-width="3"/><text x="${plotLeft + 194}" y="106" class="legend">${comparison.currentYear}</text>
+    ${expenseLegend}
     ${panel('expense', 164, 315)}${panel('income', 397, 548)}${labels}
   `);
 }
@@ -364,7 +432,7 @@ function renderPeriodComparisonSvg(
   const x = (index: number) => PLOT.left + slot * (index + 0.5);
   const y = (value: number) => scale(value, domain.min, domain.max, PLOT.bottom, PLOT.top);
   const currentBand = buckets.length
-    ? `<rect x="${PLOT.left + slot * (buckets.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="#dbeafe" opacity="0.75"/>`
+    ? `<rect x="${PLOT.left + slot * (buckets.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="${CHART_FAMILIES.slate[0]}"/>`
     : '';
   const barWidth = Math.max(4, slot * 0.2);
   const bars = (series: readonly number[], offset: number, color: string) =>
@@ -386,8 +454,8 @@ function renderPeriodComparisonSvg(
     ${partial ? `<text x="${PLOT.right}" y="42" class="subtitle" text-anchor="end">${escapeXml(formatPartialPeriod(finalBucket.start, finalBucket.end, cadence, analysis.language))}</text>` : ''}
     ${renderPeriodComparisonLegend(analysis.language, cadence, trend !== null)}
     ${currentBand}${renderDualGrid(domain.min, domain.max, analysis.currency, analysis.language, 'left')}
-    ${bars(expenses, -barWidth - 3, '#dc2626')}${bars(income, 0, '#16a34a')}${bars(periodBalances, barWidth + 3, '#2563eb')}
-    ${trendLine('expense', '#dc2626')}${trendLine('income', '#16a34a')}
+    ${bars(expenses, -barWidth - 3, CHART_FAMILIES.amber[3])}${bars(income, 0, CHART_FAMILIES.green[3])}${bars(periodBalances, barWidth + 3, CHART_FAMILIES.blue[3])}
+    ${trendLine('expense', CHART_FAMILIES.amber[3])}${trendLine('income', CHART_FAMILIES.green[3])}
     ${renderBucketLabels({ ...analysis, chart: buckets })}${renderPeriodComparisonAnnotations(analysis, cadence, trend?.expense.slope ?? null, trend?.income.slope ?? null, finalBalance)}
   `);
 }
@@ -398,12 +466,28 @@ function renderPeriodComparisonLegend(
   showTrends: boolean,
 ): string {
   const entries = [
-    ['#dc2626', false, localText(language, 'reports.chart.monthlyComparison.legend.expenses')],
-    ['#dc2626', true, localText(language, 'reports.chart.monthlyComparison.legend.expensesTrend')],
-    ['#16a34a', false, localText(language, 'reports.chart.monthlyComparison.legend.income')],
-    ['#16a34a', true, localText(language, 'reports.chart.monthlyComparison.legend.incomeTrend')],
     [
-      '#2563eb',
+      CHART_FAMILIES.amber[3],
+      false,
+      localText(language, 'reports.chart.monthlyComparison.legend.expenses'),
+    ],
+    [
+      CHART_FAMILIES.amber[3],
+      true,
+      localText(language, 'reports.chart.monthlyComparison.legend.expensesTrend'),
+    ],
+    [
+      CHART_FAMILIES.green[3],
+      false,
+      localText(language, 'reports.chart.monthlyComparison.legend.income'),
+    ],
+    [
+      CHART_FAMILIES.green[3],
+      true,
+      localText(language, 'reports.chart.monthlyComparison.legend.incomeTrend'),
+    ],
+    [
+      CHART_FAMILIES.blue[3],
       false,
       localText(
         language,
@@ -412,7 +496,7 @@ function renderPeriodComparisonLegend(
           : 'reports.chart.weeklyComparison.legend.balance',
       ),
     ],
-    ['#dbeafe', false, localText(language, 'reports.chart.legend.currentPeriod')],
+    [CHART_FAMILIES.slate[0], false, localText(language, 'reports.chart.legend.currentPeriod')],
   ] as const;
   const widths = [125, 165, 175, 215, 180, 0];
   let offset = 0;
@@ -464,20 +548,20 @@ function renderPeriodComparisonAnnotations(
   const rows: { readonly color: string; readonly label: string; readonly value: string }[] = [];
   if (expenseSlope !== null) {
     rows.push({
-      color: '#dc2626',
+      color: CHART_FAMILIES.amber[3],
       label: localText(analysis.language, 'reports.chart.monthlyComparison.delta.expenses'),
       value: formatPeriodTrendDelta(expenseSlope, analysis.currency, cadence, analysis.language),
     });
   }
   if (incomeSlope !== null) {
     rows.push({
-      color: '#16a34a',
+      color: CHART_FAMILIES.green[3],
       label: localText(analysis.language, 'reports.chart.monthlyComparison.delta.income'),
       value: formatPeriodTrendDelta(incomeSlope, analysis.currency, cadence, analysis.language),
     });
   }
   rows.push({
-    color: '#2563eb',
+    color: CHART_FAMILIES.blue[3],
     label: localText(
       analysis.language,
       cadence === 'monthly'
@@ -544,7 +628,7 @@ function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAna
     scale(value, balanceDomain.min, balanceDomain.max, PLOT.bottom, PLOT.top);
   const x = (index: number) => PLOT.left + slot * (index + 0.5);
   const currentBand = buckets.length
-    ? `<rect x="${PLOT.left + slot * (buckets.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="#dbeafe" opacity="0.75"/>`
+    ? `<rect x="${PLOT.left + slot * (buckets.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="${CHART_FAMILIES.slate[0]}"/>`
     : '';
   const cashGrid = renderDualGrid(0, cashMax, analysis.currency, analysis.language, 'left');
   const balanceGrid = renderDualGrid(
@@ -559,8 +643,8 @@ function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAna
       const center = x(index);
       const incomeY = cashY(bucket.incomeCents);
       const expenseY = cashY(bucket.expenseCents);
-      return `<rect x="${center - barWidth - 2}" y="${incomeY}" width="${barWidth}" height="${PLOT.bottom - incomeY}" fill="#16a34a"/>
-        <rect x="${center + 2}" y="${expenseY}" width="${barWidth}" height="${PLOT.bottom - expenseY}" fill="#dc2626"/>`;
+      return `<rect x="${center - barWidth - 2}" y="${incomeY}" width="${barWidth}" height="${PLOT.bottom - incomeY}" fill="${CHART_FAMILIES.green[3]}"/>
+        <rect x="${center + 2}" y="${expenseY}" width="${barWidth}" height="${PLOT.bottom - expenseY}" fill="${CHART_FAMILIES.amber[3]}"/>`;
     })
     .join('');
   const balancePath = balances
@@ -570,7 +654,7 @@ function renderCashflowSvg(dataset: TransactionChartDataset, analysis: ReportAna
     <text x="${PLOT.left}" y="48" class="title">${escapeXml(localText(analysis.language, 'reports.chart.cashflow.title'))}</text>
     <text x="${PLOT.left}" y="76" class="subtitle">${escapeXml(localText(analysis.language, 'reports.chart.cashflow.subtitle'))}</text>
     ${currentBand}${cashGrid}${balanceGrid}${bars}
-    ${balances.length ? `<polyline points="${balancePath}" fill="none" stroke="#2563eb" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
+    ${balances.length ? `<polyline points="${balancePath}" fill="none" stroke="${CHART_FAMILIES.blue[3]}" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>` : ''}
     ${renderBucketLabels(analysis)}
     ${renderCashflowLegend(analysis.language)}
   `);
@@ -594,6 +678,9 @@ export function renderStackedAllocationSvg(
     .toSorted((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
     .slice(0, 5)
     .map(([id]) => id);
+  // Resolve each id to a distinct cost color once, so bars and legend agree and
+  // categories that hash to the same palette slot stay distinguishable.
+  const assignedCostColors = assignColors(ids, COST_COLORS);
   const rows = analysis.chart.map((bucket, index) => {
     const totals = source[index] ?? {};
     const visible = ids.map((id) => totals[id] ?? 0);
@@ -604,7 +691,7 @@ export function renderStackedAllocationSvg(
   const max = Math.max(...rows.map((row) => row.values.reduce((sum, value) => sum + value, 0)), 1);
   const slot = (PLOT.right - PLOT.left) / Math.max(rows.length, 1);
   const currentBand = rows.length
-    ? `<rect x="${PLOT.left + slot * (rows.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="#dbeafe" opacity="0.75"/>`
+    ? `<rect x="${PLOT.left + slot * (rows.length - 1)}" y="${PLOT.top}" width="${slot}" height="${PLOT.bottom - PLOT.top}" fill="${CHART_FAMILIES.slate[0]}"/>`
     : '';
   const bars = rows
     .map((row, index) => {
@@ -613,7 +700,7 @@ export function renderStackedAllocationSvg(
         .map((value, valueIndex) => {
           const height = (value / max) * (PLOT.bottom - PLOT.top);
           y -= height;
-          return `<rect x="${PLOT.left + slot * index + slot * 0.18}" y="${y}" width="${slot * 0.64}" height="${height}" fill="${COLORS[valueIndex % COLORS.length]}"/>`;
+          return `<rect x="${PLOT.left + slot * index + slot * 0.18}" y="${y}" width="${slot * 0.64}" height="${height}" fill="${costColor(ids[valueIndex] ?? 'other', assignedCostColors)}"/>`;
         })
         .join('');
     })
@@ -634,7 +721,7 @@ export function renderStackedAllocationSvg(
         : localText(analysis.language, 'reports.chart.labels.subtitle'),
     )}</text>
     ${currentBand}${renderDualGrid(0, max, analysis.currency, analysis.language, 'left')}
-    ${bars}${renderBucketLabels(analysis)}${renderStackLegend(names)}
+    ${bars}${renderBucketLabels(analysis)}${renderStackLegend(names, ids, assignedCostColors)}
   `);
 }
 
@@ -653,7 +740,7 @@ function renderDualGrid(
     const anchor = side === 'left' ? 'end' : 'start';
     const line =
       side === 'left'
-        ? `<line x1="${PLOT.left}" y1="${y}" x2="${PLOT.right}" y2="${y}" stroke="#e2e8f0" stroke-width="1"/>`
+        ? `<line x1="${PLOT.left}" y1="${y}" x2="${PLOT.right}" y2="${y}" stroke="${LIGHT_TOKENS.border}" stroke-width="1"/>`
         : '';
     return `${line}<line x1="${side === 'left' ? PLOT.left - 5 : PLOT.right}" y1="${y}" x2="${side === 'left' ? PLOT.left : PLOT.right + 5}" y2="${y}" stroke="#64748b"/><text x="${x}" y="${y + 5}" class="axis" text-anchor="${anchor}">${escapeXml(formatCompactMoneyLocale(value, currency, language))}</text>`;
   }).join('');
@@ -672,10 +759,10 @@ function renderBucketLabels(analysis: ReportAnalysis): string {
 
 function renderCashflowLegend(language: string): string {
   const entries = [
-    ['#16a34a', localText(language, 'reports.chart.legend.income')],
-    ['#dc2626', localText(language, 'reports.chart.legend.expenses')],
-    ['#2563eb', localText(language, 'reports.chart.legend.balance')],
-    ['#dbeafe', localText(language, 'reports.chart.legend.currentPeriod')],
+    [CHART_FAMILIES.green[3], localText(language, 'reports.chart.legend.income')],
+    [CHART_FAMILIES.amber[3], localText(language, 'reports.chart.legend.expenses')],
+    [CHART_FAMILIES.blue[3], localText(language, 'reports.chart.legend.balance')],
+    [CHART_FAMILIES.slate[0], localText(language, 'reports.chart.legend.currentPeriod')],
   ] as const;
   return entries
     .map(
@@ -685,11 +772,15 @@ function renderCashflowLegend(language: string): string {
     .join('');
 }
 
-function renderStackLegend(names: readonly string[]): string {
+function renderStackLegend(
+  names: readonly string[],
+  ids: readonly string[],
+  assigned: Map<string, string>,
+): string {
   return names
     .map(
       (name, index) =>
-        `<rect x="${PLOT.left + (index % 3) * 340}" y="${582 + Math.floor(index / 3) * 24}" width="16" height="12" fill="${COLORS[index % COLORS.length]}"/><text x="${PLOT.left + 24 + (index % 3) * 340}" y="${593 + Math.floor(index / 3) * 24}" class="legend">${escapeXml(truncate(name, 32))}</text>`,
+        `<rect x="${PLOT.left + (index % 3) * 340}" y="${582 + Math.floor(index / 3) * 24}" width="16" height="12" fill="${costColor(ids[index] ?? 'other', assigned)}"/><text x="${PLOT.left + 24 + (index % 3) * 340}" y="${593 + Math.floor(index / 3) * 24}" class="legend">${escapeXml(truncate(name, 32))}</text>`,
     )
     .join('');
 }
@@ -730,7 +821,7 @@ function toChart(
   svg: string,
 ): IntelligenceChart {
   const image = new Resvg(svg, {
-    background: '#ffffff',
+    background: LIGHT_TOKENS.surface,
     fitTo: { mode: 'original' },
     font: {
       loadSystemFonts: false,
@@ -780,17 +871,17 @@ function escapeXml(value: string): string {
 function svgDocument(content: string, height = HEIGHT): string {
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${WIDTH}" height="${height}" viewBox="0 0 ${WIDTH} ${height}">
     <style>
-      text { font-family: 'DejaVu Sans'; fill: #0f172a; }
+      text { font-family: Roboto, 'Open Sans', 'Helvetica Neue', Arial, sans-serif; fill: ${LIGHT_TOKENS.text}; }
       .title { font-size: 30px; font-weight: 700; }
-      .subtitle { font-size: 16px; fill: #64748b; }
+      .subtitle { font-size: 16px; fill: ${LIGHT_TOKENS['text-muted']}; }
       .section-title { font-size: 22px; font-weight: 700; }
-      .axis { font-size: 14px; fill: #64748b; }
-      .legend { font-size: 15px; fill: #334155; }
-      .empty { font-size: 18px; fill: #94a3b8; }
+      .axis { font-size: 14px; fill: ${LIGHT_TOKENS['text-muted']}; }
+      .legend { font-size: 15px; fill: ${LIGHT_TOKENS.text}; }
+      .empty { font-size: 18px; fill: ${LIGHT_TOKENS['text-muted']}; }
       .bar-label { font-size: 15px; font-weight: 600; }
-      .bar-value { font-size: 14px; fill: #475569; }
+      .bar-value { font-size: 14px; fill: ${LIGHT_TOKENS['text-muted']}; }
     </style>
-    <rect width="${WIDTH}" height="${height}" fill="#ffffff"/>
+    <rect width="${WIDTH}" height="${height}" fill="${LIGHT_TOKENS.surface}"/>
     ${content}
   </svg>`;
 }

@@ -132,6 +132,36 @@ function svgAxisLabels(svg: string): readonly string[] {
   );
 }
 
+describe('stable conceptual colors', () => {
+  it('keeps category colors when period rankings change', () => {
+    const colorFor = (svg: string, label: string): string => {
+      const match = new RegExp(
+        `fill="(#[0-9a-f]{6})"/><text[^>]*class="legend">${label}</text>`,
+      ).exec(svg);
+      expect(match).not.toBeNull();
+      return match?.[1] ?? '';
+    };
+    const names = { housing: 'Housing', groceries: 'Groceries' };
+    const first = renderStackedAllocationSvg(analysis, 'category', names);
+    const next = renderStackedAllocationSvg(
+      {
+        ...analysis,
+        chart: analysis.chart.map((bucket) => ({
+          ...bucket,
+          categoryTotals: { groceries: 500_000, housing: 1_000 },
+        })),
+      },
+      'category',
+      names,
+    );
+    for (const label of Object.values(names)) {
+      const color = colorFor(first, label);
+      expect(['#b45309', '#78350f', '#c2410c', '#7c2d12', '#be123c', '#881337']).toContain(color);
+      expect(colorFor(next, label)).toBe(color);
+    }
+  });
+});
+
 describe('intelligence PNG charts', () => {
   it('renders only comparable year-over-year months in separate deterministic panels', () => {
     const monthly: ReportAnalysis = {
@@ -379,9 +409,9 @@ describe('intelligence PNG charts', () => {
     expect(dashedLines.every((match) => match[1]?.trim().split(' ').length === 2)).toBe(true);
     expect(dashedLines.every((match) => match[1]?.startsWith('182.29166666666666,'))).toBe(true);
     expect(dashedLines.every((match) => match[1]?.includes('1002.7083333333333,'))).toBe(true);
-    expect(svg).toContain('stroke="#dc2626"');
-    expect(svg).toContain('stroke="#16a34a"');
-    expect(svg).toContain('fill="#2563eb"');
+    expect(svg).toContain('stroke="#b45309"');
+    expect(svg).toContain('stroke="#15803d"');
+    expect(svg).toContain('fill="#1d4ed8"');
     expect(svg).toContain('Balanço do mês');
     expect(svg).not.toContain('text-anchor="start"');
 
@@ -422,9 +452,9 @@ describe('intelligence PNG charts', () => {
 
     expect(svg).toContain('Balance and cash flow');
     expect(svg).toContain('Partial week — data through Aug 17..Aug 20');
-    expect(svg).toContain('stroke="#dc2626"');
-    expect(svg).toContain('stroke="#16a34a"');
-    expect(svg).toContain('fill="#2563eb"');
+    expect(svg).toContain('stroke="#b45309"');
+    expect(svg).toContain('stroke="#15803d"');
+    expect(svg).toContain('fill="#1d4ed8"');
     expect(svg).toContain('R$800');
     expect(svg.match(/class="period-trend"/g)).toHaveLength(2);
   });
@@ -461,9 +491,9 @@ describe('intelligence PNG charts', () => {
       },
       weekly,
     );
-    const expenseBars = svgBars(svg, '#dc2626');
-    const incomeBars = svgBars(svg, '#16a34a');
-    const balanceBars = svgBars(svg, '#2563eb');
+    const expenseBars = svgBars(svg, '#b45309');
+    const incomeBars = svgBars(svg, '#15803d');
+    const balanceBars = svgBars(svg, '#1d4ed8');
 
     expect(model.buckets).toHaveLength(12);
     expect(model.periodBalances).toEqual(weekly.chart.map((bucket) => -bucket.incomeCents));
@@ -509,9 +539,9 @@ describe('intelligence PNG charts', () => {
     };
     const model = buildPeriodComparisonModel(monthly.chart, 'monthly');
     const svg = renderMonthlyComparisonSvg(monthly);
-    const expenseBars = svgBars(svg, '#dc2626');
-    const incomeBars = svgBars(svg, '#16a34a');
-    const balanceBars = svgBars(svg, '#2563eb');
+    const expenseBars = svgBars(svg, '#b45309');
+    const incomeBars = svgBars(svg, '#15803d');
+    const balanceBars = svgBars(svg, '#1d4ed8');
 
     expect(model.periodBalances).toEqual(monthly.chart.map((bucket) => bucket.incomeCents / 2));
     expect(expenseBars).toHaveLength(12);
@@ -536,8 +566,8 @@ describe('intelligence PNG charts', () => {
     const category = renderStackedAllocationSvg(analysis, 'category', {});
     const label = renderStackedAllocationSvg(analysis, 'label', {});
 
-    expect(category).toContain('fill="#dbeafe" opacity="0.75"');
-    expect(label).toContain('fill="#dbeafe" opacity="0.75"');
+    expect(category).toContain('fill="#f1f5f9"');
+    expect(label).toContain('fill="#f1f5f9"');
   });
 
   it('renders signed monthly balances and month-over-month changes', () => {
