@@ -185,7 +185,7 @@ describe('sync suggestion digest', () => {
     expect(content.html).toContain('/#/transaction/new-1');
     expect(content.html).toContain('href="https://finance.example/#/triage"');
     expect(content.html).toContain('Alimentação');
-    expect(content.html).toContain('color: #16a34a');
+    expect(content.html).toContain('color: var(--success)');
   });
 
   it('uses the global generated-content language for the digest surface', async () => {

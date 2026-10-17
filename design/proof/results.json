@@ -1,0 +1,18 @@
+[
+  {
+    "repo": "local-openfinance",
+    "theme": "light",
+    "background": "rgb(246, 247, 249)",
+    "text": "rgb(31, 41, 55)",
+    "font": "Roboto, \"Open Sans\", \"Helvetica Neue\", Arial, sans-serif",
+    "override": true
+  },
+  {
+    "repo": "local-openfinance",
+    "theme": "dark",
+    "background": "rgb(17, 24, 39)",
+    "text": "rgb(249, 250, 251)",
+    "font": "Roboto, \"Open Sans\", \"Helvetica Neue\", Arial, sans-serif",
+    "override": true
+  }
+]

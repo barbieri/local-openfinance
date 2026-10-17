@@ -1,3 +1,5 @@
+import { REPORT_HTML_CSS } from '../../../intelligence/report-html-contract.js';
+import '../gustavo-style.css';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
@@ -361,7 +363,8 @@ function ReportsCurrentSection({
               {t('reports.regenerate')}
             </button>
           </div>
-          <div className="max-w-full min-w-0 space-y-3 overflow-x-auto text-sm [&_.report-dashboard]:space-y-4 [&_.report-evidence]:text-muted-foreground [&_.report-finding-attention]:border-l-destructive [&_.report-finding-positive]:border-l-emerald-600 [&_.report-finding]:space-y-1 [&_.report-finding]:border-l-4 [&_.report-finding]:pl-3 [&_.report-findings]:space-y-4 [&_.report-metric-delta]:text-muted-foreground [&_.report-metric-label]:text-muted-foreground [&_.report-metric-value]:text-lg [&_.report-metric-value]:font-semibold [&_.report-metric]:rounded-md [&_.report-metric]:border [&_.report-metric]:p-3 [&_.report-metrics]:grid [&_.report-metrics]:gap-2 [&_.report-metrics]:sm:grid-cols-3 [&_.report-note]:text-muted-foreground [&_.report-table-negative]:text-destructive [&_.report-table-positive]:text-emerald-600 [&_.report-table-section]:bg-muted [&_.report-table-value]:text-right [&_.report-table]:min-w-max [&_.report-table]:w-full [&_.report-table]:text-xs [&_.report-table_td]:border-b [&_.report-table_td]:border-border [&_.report-table_td]:p-1.5 [&_.report-table_td]:tabular-nums [&_.report-table_th]:border-b [&_.report-table_th]:border-border [&_.report-table_th]:p-1.5 [&_.report-table_th]:text-left [&_.report-table_th]:tabular-nums [&_a]:text-primary [&_a]:underline [&_h2]:text-lg [&_h2]:font-semibold [&_h3]:font-semibold [&_li]:ml-5 [&_li]:list-disc dark:[&_.report-table-positive]:text-emerald-400">
+          <div className="gustavo-report max-w-full min-w-0 space-y-3 overflow-x-auto text-sm">
+            <style>{REPORT_HTML_CSS}</style>
             <ReportHtml html={selectedRun.run.html} />
           </div>
           <ReportCharts charts={selectedRun.run.charts} t={t} />
@@ -390,7 +393,8 @@ function ReportsCurrentSection({
             </div>
           </div>
           <h4 className="font-semibold">{preview.run.subject}</h4>
-          <div className="max-w-full min-w-0 space-y-3 overflow-x-auto text-sm [&_.report-table-negative]:text-destructive [&_.report-table-positive]:text-emerald-600 [&_.report-table-section]:bg-muted [&_.report-table-value]:text-right [&_.report-table]:min-w-max [&_.report-table]:w-full [&_.report-table]:text-xs [&_.report-table_td]:border-b [&_.report-table_td]:border-border [&_.report-table_td]:p-1.5 [&_.report-table_td]:tabular-nums [&_.report-table_th]:border-b [&_.report-table_th]:border-border [&_.report-table_th]:p-1.5 [&_.report-table_th]:text-left [&_.report-table_th]:tabular-nums [&_a]:text-primary [&_a]:underline dark:[&_.report-table-positive]:text-emerald-400">
+          <div className="gustavo-report max-w-full min-w-0 space-y-3 overflow-x-auto text-sm">
+            <style>{REPORT_HTML_CSS}</style>
             <ReportHtml html={preview.run.html} />
           </div>
           <ReportCharts charts={preview.run.charts} t={t} />

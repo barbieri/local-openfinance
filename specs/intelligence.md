@@ -450,3 +450,13 @@ independently reviewed commit in the series.
    before opening the PR.
 4. If review adds a fixup, `git rebase --autosquash` onto the series base so
    each slice remains one commit.
+
+## Gustavo Style report presentation
+
+Report email and the Reports page share the report HTML contract stylesheet.
+Tokens are generated from the canonical design linked in `design/README.md`.
+Email is self-contained, with explicit surfaces, light/dark media support, and a
+root data-theme override. Chart PNGs intentionally retain an opaque light canvas.
+Cost series use amber/orange/rose; investments use indigo/blue/teal; income is
+green and prior periods are slate. Category IDs, not period ranking, select a
+stable family shade. Shades 700/900 retain at least 4.5:1 canvas contrast.

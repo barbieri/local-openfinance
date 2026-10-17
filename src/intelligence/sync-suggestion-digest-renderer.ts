@@ -1,4 +1,4 @@
-import { confidenceColor, resolveConfidencePercent } from '../utils/confidence.js';
+import { confidenceTone, resolveConfidencePercent } from '../utils/confidence.js';
 import { getNumberFormat } from '../utils/intl-formatters.js';
 import { localText } from '../utils/locale-text.js';
 import { escapeHtml } from './email.js';
@@ -34,7 +34,7 @@ function buildDigestLink(publicBaseUrl: string | undefined, hash: string): strin
 }
 
 function formatLabeledText(value: LabeledText): string {
-  return `<span style="color:${escapeHtml(value.color)}">${escapeHtml(value.text)}</span>`;
+  return `<span style="border-left:4px solid ${escapeHtml(value.color)};padding-left:4px;color:var(--text)">${escapeHtml(value.text)}</span>`;
 }
 
 function joinOrEmpty(values: readonly LabeledText[], empty = '—'): string {
@@ -57,7 +57,7 @@ export function renderSuggestionDigestHtml(
   <td>${formatLabeledText(row.newCategory)}</td>
   <td>${joinOrEmpty(row.originalLabels)}</td>
   <td>${joinOrEmpty(row.newLabels)}</td>
-  <td style="color: ${confidenceColor(row.score)}; font-weight: 600">${escapeHtml(formatScore(row.score))}</td>
+  <td style="color: ${scoreColor(row.score)}; font-weight: 600">${escapeHtml(formatScore(row.score))}</td>
 </tr>`,
       )
       .join('\n');
@@ -67,9 +67,8 @@ export function renderSuggestionDigestHtml(
   ) => `<h2>${title}</h2><table>
   <thead><tr><th>${localText(language, 'syncSuggestionDigest.column.date')}</th><th>${localText(language, 'syncSuggestionDigest.column.amount')}</th><th>${localText(language, 'syncSuggestionDigest.column.description')}</th><th>${localText(language, 'syncSuggestionDigest.column.originalCategory')}</th><th>${localText(language, 'syncSuggestionDigest.column.newCategory')}</th><th>${localText(language, 'syncSuggestionDigest.column.originalLabels')}</th><th>${localText(language, 'syncSuggestionDigest.column.newLabels')}</th><th>${localText(language, 'syncSuggestionDigest.column.score')}</th></tr></thead>
   <tbody>${renderRows(rows)}</tbody></table>`;
-  return `<style>table{border-collapse:collapse;width:100%;border:1px solid #cbd5e1}th{background:#fff;color:#0f172a;text-align:left;padding:10px;border-bottom:1px solid #e2e8f0}td{border-top:1px solid #e2e8f0;padding:10px;vertical-align:top}h2{color:#0f172a;margin:20px 0 8px}.empty{color:#64748b}</style>
-<h1 style="color:#0f172a">${localText(language, 'syncSuggestionDigest.title')}</h1>
-<p style="color:#64748b">${localText(language, 'syncSuggestionDigest.intro')}</p>
+  return `<h1>${localText(language, 'syncSuggestionDigest.title')}</h1>
+<p style="color:var(--text-muted)">${localText(language, 'syncSuggestionDigest.intro')}</p>
 ${table(localText(language, 'syncSuggestionDigest.newHeading'), digestRows.newRows)}
 ${digestRows.previousRows.length > 0 ? table(localText(language, 'syncSuggestionDigest.previousHeading'), digestRows.previousRows) : ''}
 <p style="margin-top:20px"><a href="${escapeHtml(triageLink)}">${localText(language, 'syncSuggestionDigest.openTriage')}</a></p>`;
@@ -108,6 +107,12 @@ function triageLink(publicBaseUrl: string | undefined): string {
 
 function markdownCell(value: string): string {
   return value.replaceAll('|', '\\|').replaceAll(/\r?\n/gu, ' ');
+}
+
+function scoreColor(score: number | null): string {
+  if (score === null) return 'var(--text-muted)';
+  const tone = confidenceTone(resolveConfidencePercent(score));
+  return { low: 'var(--error)', medium: 'var(--warning)', high: 'var(--success)' }[tone];
 }
 
 function formatScore(score: number | null): string {
