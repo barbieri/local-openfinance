@@ -133,9 +133,6 @@
 
 .gustavo-report a {
   color: var(--accent);
-  text-decoration: none;
-}
-.gustavo-report a:hover {
   text-decoration: underline;
 }
 
@@ -152,14 +149,13 @@
   padding: 8px;
   text-align: left;
 }
-/* Numeric columns stay right-aligned in the browser exactly as in email;
-   this rule needs the same specificity to beat the td rule above. */
-.gustavo-report td.report-table-value {
-  text-align: right;
-}
 .gustavo-report th {
   background: var(--accent-soft);
   font-weight: 500;
+}
+
+td.report-table-value {
+  text-align: right;
 }
 
 .gustavo-report hr {
@@ -183,4 +179,8 @@
   vertical-align: middle;
   fill: currentColor;
   margin-right: 8px;
+}
+
+.gustavo-report td.report-table-value {
+  text-align: right;
 }
