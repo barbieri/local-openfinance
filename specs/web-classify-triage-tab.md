@@ -63,6 +63,11 @@ It includes an action that opens the classified transaction in a new tab.
 The transaction editor action area stays visible at the bottom while the
 editor content scrolls.
 
+The triage editor sits at the viewport bottom even when its content is shorter
+than the available height. Its action area does not move when the next
+transaction has different content. On short screens the page can scroll while
+the actions remain sticky at the viewport bottom.
+
 ## Precompute controls
 
 The tab can start precompute through:

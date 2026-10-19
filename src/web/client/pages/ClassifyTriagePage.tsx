@@ -307,7 +307,7 @@ function TriageTransactionPanel({
   }
 
   return (
-    <div className="rounded-lg border border-border bg-background p-4 shadow-sm">
+    <div className="mt-auto rounded-lg border border-border bg-background p-4 pb-0 shadow-sm">
       <TransactionEditPanel
         transaction={transaction}
         mode="triage"
@@ -363,7 +363,7 @@ function ClassifyTriageContent({
   const { t } = useTranslation();
 
   return (
-    <div className="mx-auto max-w-3xl space-y-4">
+    <div className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold">{t('triage.title')}</h2>

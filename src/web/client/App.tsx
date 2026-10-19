@@ -92,7 +92,7 @@ function AppShell() {
   const { tab, setTab, route } = useAppNavigation();
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex min-h-dvh flex-col bg-background">
       <header className="border-b border-border bg-primary px-4 py-3 text-primary-foreground">
         <div className="hidden flex-wrap items-center gap-3 sm:flex">
           <h1 className="text-lg font-semibold">{t('app.title')}</h1>
@@ -107,7 +107,7 @@ function AppShell() {
           />
         </div>
       </header>
-      <main className="p-4">
+      <main className={`flex flex-1 flex-col p-4 ${tab === 'triage' ? 'pb-0' : ''}`}>
         <Suspense fallback={<p className="text-sm text-muted-foreground">…</p>}>
           {route.kind === 'transaction' ? (
             <TransactionPermalinkPage />
