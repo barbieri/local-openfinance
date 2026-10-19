@@ -10,6 +10,30 @@ export type OpenFinanceResponse<T> = {
 export type OpenFinanceErrorKind = 'network' | 'http' | 'upstream' | 'invalid_response';
 
 const MAX_ERROR_BODY_CHARS = 2000;
+const MAX_ATTEMPTS = 8;
+const RATE_LIMIT_PATTERN = /(?:rate[ _-]?limit|fila cheia)/iu;
+let requestQueue = Promise.resolve();
+let lastRequestAt: number | undefined;
+
+async function pacedFetch(url: string, options: Parameters<typeof fetch>[1]): Promise<Response> {
+  const configured = Number(process.env['OPENFINANCE_MIN_REQUEST_INTERVAL_MS'] ?? 550);
+  const interval = Number.isFinite(configured) && configured >= 0 ? configured : 550;
+  const turn = requestQueue.then(async () => {
+    if (lastRequestAt !== undefined) {
+      const delay = lastRequestAt + interval - Date.now();
+      if (delay > 0) {
+        await sleep(delay);
+      }
+    }
+    lastRequestAt = Date.now();
+    return { response: fetch(url, options) };
+  });
+  requestQueue = turn.then(
+    () => {},
+    () => {},
+  );
+  return (await turn).response;
+}
 
 export class OpenFinanceClientError extends Error {
   readonly kind: OpenFinanceErrorKind;
@@ -54,7 +78,7 @@ export class OpenFinanceClient {
   async #postWithRetry<T>(url: string, body: Record<string, unknown>, attempt: number): Promise<T> {
     let response: Response;
     try {
-      response = await fetch(url, {
+      response = await pacedFetch(url, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${this.#apiKey}`,
@@ -73,8 +97,8 @@ export class OpenFinanceClient {
 
     if (!response.ok) {
       const text = await response.text();
-      if (isRetriableRateLimitResponse(response.status, text) && attempt < 7) {
-        await sleep(readRetryAfterMs(text, 1000));
+      if (isRetriableRateLimitResponse(response.status, text) && attempt + 1 < MAX_ATTEMPTS) {
+        await sleep(readRetryAfterMs(response, text, attempt));
         return this.#postWithRetry<T>(url, body, attempt + 1);
       }
       throw new OpenFinanceClientError({
@@ -123,6 +147,10 @@ export class OpenFinanceClient {
       readonly message?: unknown;
     };
     if (!envelope.ok) {
+      if (RATE_LIMIT_PATTERN.test(text) && attempt + 1 < MAX_ATTEMPTS) {
+        await sleep(readRetryAfterMs(response, text, attempt));
+        return this.#postWithRetry<T>(url, body, attempt + 1);
+      }
       throw new OpenFinanceClientError({
         message: formatUpstreamOkFalse(url, envelope, text),
         kind: 'upstream',
@@ -162,7 +190,7 @@ export function formatHttpError(
 }
 
 export function isRetriableRateLimitResponse(status: number, body: string): boolean {
-  return status === 429 || (status === 500 && /(?:rate[ -]?limit|fila cheia)/iu.test(body));
+  return status === 429 || (status === 500 && RATE_LIMIT_PATTERN.test(body));
 }
 
 function formatUpstreamOkFalse(
@@ -264,16 +292,30 @@ function summarizeObject(record: Record<string, unknown>): string | null {
   }
 }
 
-function readRetryAfterMs(body: string, fallbackMs: number): number {
-  try {
-    const parsed = JSON.parse(body) as {
-      readonly error?: { readonly retry_after_ms?: number };
-    };
-    const retryAfterMs = parsed.error?.retry_after_ms;
-    return typeof retryAfterMs === 'number' && retryAfterMs > 0 ? retryAfterMs : fallbackMs;
-  } catch {
-    return fallbackMs;
+function readRetryAfterMs(response: Response, body: string, attempt: number): number {
+  const header = response.headers.get('Retry-After');
+  if (header?.trim()) {
+    const seconds = Number(header);
+    const delay = Number.isFinite(seconds) ? seconds * 1000 : Date.parse(header) - Date.now();
+    if (Number.isFinite(delay)) {
+      return Math.max(0, delay);
+    }
   }
+  try {
+    const parsed: unknown = JSON.parse(body);
+    if (parsed && typeof parsed === 'object' && 'error' in parsed) {
+      const error = parsed.error;
+      if (error && typeof error === 'object' && 'retry_after_ms' in error) {
+        const delay = error.retry_after_ms;
+        if (typeof delay === 'number' && Number.isFinite(delay) && delay >= 0) {
+          return delay;
+        }
+      }
+    }
+  } catch {
+    // Non-JSON errors still use the computed backoff.
+  }
+  return Math.min(30_000, 500 * 2 ** attempt) * (0.5 + Math.random() * 0.5);
 }
 
 function sleep(ms: number): Promise<void> {

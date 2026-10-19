@@ -57,6 +57,7 @@ Review suggested transaction categories and labels, including confidence and an 
 The REST contract is documented in [`banco-mcp-openapi.json`](./banco-mcp-openapi.json) (base URL `https://api.mcp.ai`). Authentication uses a bearer workspace API key:
 
 - `OPENFINANCE_API_KEY` — required for sync
+- `OPENFINANCE_MIN_REQUEST_INTERVAL_MS` — optional; minimum process-wide request spacing in milliseconds, default `550` (roughly 2 requests/s). Use a finite nonnegative number; `0` disables spacing. Invalid values use the default.
 - `OPENFINANCE_BASE_URL` — optional; defaults to `https://api.mcp.ai/api/openfinance`
 
 The CLI writes a local SQLite database (default `openfinance.sqlite` beside your config). Sync is incremental: cursors per resource avoid re-fetching unchanged history.

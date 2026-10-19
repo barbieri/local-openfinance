@@ -74,6 +74,7 @@ Prefer `LOG_LEVEL=warn` for real usage.
 | Variable | Purpose |
 | --- | --- |
 | `OPENFINANCE_API_KEY` | Banco MCP bearer token for sync |
+| `OPENFINANCE_MIN_REQUEST_INTERVAL_MS` | Process-wide minimum request interval in ms, default `550`; finite nonnegative number (`0` disables spacing), invalid values use default |
 | `OPENFINANCE_BASE_URL` | API base, default `https://api.mcp.ai/api/openfinance` |
 | `OPENAI_API_KEY` | OpenAI analysis and embeddings |
 | `ANTHROPIC_API_KEY` | Anthropic analysis |
