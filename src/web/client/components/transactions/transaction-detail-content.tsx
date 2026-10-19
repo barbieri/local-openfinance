@@ -6,6 +6,7 @@ import { toast } from 'sonner';
 import {
   computeForeignExchangeRate,
   isForeignCurrencyTransaction,
+  transactionAccountingAmount,
 } from '../../../../db/transaction-foreign-amount.js';
 import { useEntityRef } from '../../hooks/use-entity-ref.js';
 import { apiJson } from '../../lib/api.js';
@@ -195,6 +196,7 @@ type InstallmentPlanFirstTransaction = {
   readonly local_date: string;
   readonly occurred_at: string;
   readonly amount_cents: number;
+  readonly account_type?: string;
   readonly amount_in_account_currency_cents: number;
   readonly currency: string;
   readonly account_currency: string;
@@ -215,7 +217,7 @@ function InstallmentPlanTotalAmount({
   return (
     <>
       {t('transactionDetail.installmentTotal')}{' '}
-      <FormattedCurrency amountCents={totalAmountCents} currency={currency} signed={false} />
+      <FormattedCurrency amountCents={totalAmountCents} currency={currency} />
     </>
   );
 }
@@ -267,6 +269,7 @@ function InstallmentFirstInstallmentDetails({
         </DetailField>
         <DetailField label={t('columns.amount')}>
           <ForeignCurrencyAmount
+            accountType={firstInstallment.account_type}
             amountCents={firstInstallment.amount_cents}
             currency={firstInstallment.currency}
             accountCurrency={firstInstallment.account_currency}
@@ -418,7 +421,10 @@ function ForeignCurrencyDetails({ transaction }: { readonly transaction: Transac
     if (!hasForeignAmount) {
       return null;
     }
-    const accountAmountCents = transaction.amount_in_account_currency_cents;
+    const accountAmountCents = transactionAccountingAmount(
+      transaction.amount_in_account_currency_cents,
+      transaction.account_type,
+    );
     const exchangeRate = computeForeignExchangeRate(transaction.amount_cents, accountAmountCents);
     if (exchangeRate === null) {
       return null;
@@ -432,6 +438,7 @@ function ForeignCurrencyDetails({ transaction }: { readonly transaction: Transac
     hasForeignAmount,
     i18n.language,
     transaction.account_currency,
+    transaction.account_type,
     transaction.amount_cents,
     transaction.amount_in_account_currency_cents,
     transaction.currency,
@@ -441,12 +448,21 @@ function ForeignCurrencyDetails({ transaction }: { readonly transaction: Transac
     return null;
   }
 
-  const accountAmountCents = transaction.amount_in_account_currency_cents;
+  const accountAmountCents = transactionAccountingAmount(
+    transaction.amount_in_account_currency_cents,
+    transaction.account_type,
+  );
 
   return (
     <p className="rounded-md border border-border p-3 text-sm">
       <span className="mr-2 font-medium">{t('transactionDetail.foreignCurrency')}</span>
-      <FormattedCurrency amountCents={transaction.amount_cents} currency={transaction.currency} />
+      <FormattedCurrency
+        amountCents={transactionAccountingAmount(
+          transaction.amount_cents,
+          transaction.account_type,
+        )}
+        currency={transaction.currency}
+      />
       <span className="mx-2 text-muted-foreground">→</span>
       <FormattedCurrency amountCents={accountAmountCents} currency={transaction.account_currency} />
       {exchangeRateLabel ? (
@@ -464,16 +480,18 @@ function LinkedTransferSummary({ related }: { readonly related: TransferRelatedL
 
   const amountLabel = isForeignCurrencyTransaction(related.currency, related.account_currency)
     ? formatDualCurrencyAmount(
-        related.amount_cents,
+        transactionAccountingAmount(related.amount_cents, related.account_type),
         related.currency,
         related.account_currency,
-        related.amount_in_account_currency_cents,
+        transactionAccountingAmount(related.amount_in_account_currency_cents, related.account_type),
         i18n.language,
+        { signed: true },
       )
     : formatCurrencyAmount(
-        related.amount_in_account_currency_cents,
+        transactionAccountingAmount(related.amount_in_account_currency_cents, related.account_type),
         related.account_currency,
         i18n.language,
+        { signed: true },
       );
   const dateLabel = formatRelativeOrAbsoluteDate(related.occurred_at, i18n.language);
 
@@ -570,10 +588,16 @@ function TransactionTitlePrimaryRow({
         </span>
       ) : null}
       <ForeignCurrencyAmount
-        amountCents={transaction.amount_cents}
+        amountCents={transactionAccountingAmount(
+          transaction.amount_cents,
+          transaction.account_type,
+        )}
         currency={transaction.currency}
         accountCurrency={transaction.account_currency}
-        amountInAccountCurrencyCents={transaction.amount_in_account_currency_cents}
+        amountInAccountCurrencyCents={transactionAccountingAmount(
+          transaction.amount_in_account_currency_cents,
+          transaction.account_type,
+        )}
       />
       <span>
         {accountLoading
@@ -835,10 +859,20 @@ function InstallmentPlanSection({
       transactionId={transaction.id}
       installmentNumber={installmentNumber}
       totalInstallments={totalInstallments}
-      amountInAccountCurrencyCents={transaction.amount_in_account_currency_cents}
+      amountInAccountCurrencyCents={transactionAccountingAmount(
+        transaction.amount_in_account_currency_cents,
+        transaction.account_type,
+      )}
       accountCurrency={transaction.account_currency}
       purchaseDate={transaction.credit_card?.purchase_date}
-      purchaseTotalCents={transaction.credit_card?.purchase_total_cents}
+      purchaseTotalCents={
+        transaction.credit_card?.purchase_total_cents == null
+          ? null
+          : transactionAccountingAmount(
+              transaction.credit_card.purchase_total_cents,
+              transaction.account_type,
+            )
+      }
       onOpenTransaction={onOpenTransaction}
       enabled={active}
       locale={locale}

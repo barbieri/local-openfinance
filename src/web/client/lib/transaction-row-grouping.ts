@@ -1,4 +1,5 @@
 import type { TFunction } from 'i18next';
+import { transactionAccountingAmount } from '../../../db/transaction-foreign-amount.js';
 import type {
   DataTableRowGroup,
   DataTableRowGroupAmountSummary,
@@ -21,6 +22,7 @@ export type TransactionGroupByField = (typeof TRANSACTION_GROUP_BY_FIELDS)[numbe
 export type TransactionGroupingRow = {
   readonly id: string;
   readonly account_id: string;
+  readonly account_type?: string;
   readonly local_date: string;
   readonly display_name: string;
   readonly merchant_name: string | null;
@@ -80,7 +82,7 @@ export function resolveTransactionGroupBy(
   stored: readonly string[] | undefined,
 ): readonly TransactionGroupByField[] {
   if (!stored) {
-    return [];
+    return ['date'];
   }
   const resolved: TransactionGroupByField[] = [];
   for (const value of stored) {
@@ -368,7 +370,10 @@ function buildAmountSummary(
   let negativeCents = 0;
   const currencies = new Set<string>();
   for (const row of rows) {
-    const amount = row.amount_in_account_currency_cents;
+    const amount = transactionAccountingAmount(
+      row.amount_in_account_currency_cents,
+      row.account_type,
+    );
     currencies.add(row.account_currency);
     if (amount > 0) {
       positiveCents += amount;

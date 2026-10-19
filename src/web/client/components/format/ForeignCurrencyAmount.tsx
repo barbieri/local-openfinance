@@ -1,9 +1,13 @@
 import { clsx } from 'clsx';
-import { isForeignCurrencyTransaction } from '../../../../db/transaction-foreign-amount.js';
+import {
+  isForeignCurrencyTransaction,
+  transactionAccountingAmount,
+} from '../../../../db/transaction-foreign-amount.js';
 import { FormattedCurrency } from './FormattedCurrency.js';
 
 type ForeignCurrencyAmountProps = {
   readonly amountCents: number;
+  readonly accountType?: string | undefined;
   readonly currency: string;
   readonly accountCurrency: string;
   readonly amountInAccountCurrencyCents?: number | null;
@@ -12,13 +16,19 @@ type ForeignCurrencyAmountProps = {
 };
 
 export function ForeignCurrencyAmount({
-  amountCents,
+  amountCents: rawAmountCents,
+  accountType,
   currency,
   accountCurrency,
   amountInAccountCurrencyCents,
   className,
   signed = true,
 }: ForeignCurrencyAmountProps) {
+  const amountCents = transactionAccountingAmount(rawAmountCents, accountType);
+  const accountAmountCents = transactionAccountingAmount(
+    amountInAccountCurrencyCents ?? rawAmountCents,
+    accountType,
+  );
   const hasForeignAmount = isForeignCurrencyTransaction(currency, accountCurrency);
 
   if (!hasForeignAmount) {
@@ -37,7 +47,7 @@ export function ForeignCurrencyAmount({
       <FormattedCurrency amountCents={amountCents} currency={currency} signed={signed} />
       {' ('}
       <FormattedCurrency
-        amountCents={amountInAccountCurrencyCents ?? amountCents}
+        amountCents={accountAmountCents}
         currency={accountCurrency}
         signed={signed}
       />

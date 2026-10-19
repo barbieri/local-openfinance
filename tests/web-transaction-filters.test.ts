@@ -11,6 +11,15 @@ import {
 } from '../src/web/client/lib/transaction-filters.js';
 
 describe('transaction filters', () => {
+  it('defaults to 100-row date-packed pages and preserves explicit ungrouped paging', () => {
+    const defaults = new URLSearchParams(buildTransactionListQuery({ f: {} }));
+    expect(defaults.get('page-size')).toBe('100');
+    expect(defaults.get('group-by')).toBe('date');
+    expect(new URLSearchParams(buildTransactionListQuery({ f: {}, g: [] })).has('group-by')).toBe(
+      false,
+    );
+  });
+
   it('defaults missing date preset to this month', () => {
     expect(resolveEffectiveTransactionFilters({})).toEqual({ d: 'this-month' });
     expect(resolveEffectiveTransactionFilters({ d: TRANSACTION_DATE_ALL })).toEqual({

@@ -147,6 +147,7 @@ export function buildTransactionTableColumns(input: {
       ...numericColumn<TransactionRow>(),
       cell: ({ row }) => (
         <ForeignCurrencyAmount
+          accountType={row.original.account_type}
           amountCents={row.original.amount_cents}
           currency={row.original.currency}
           accountCurrency={row.original.account_currency}

@@ -41,7 +41,22 @@ Each section is independently collapsible.
 
 ## Grouping
 
-Grouping is client-side over the current server-paginated rows.
+Grouping renders client-side. Date grouping is enabled by default and the server
+packs complete local dates into sequential numbered pages. The default page target
+is 100 rows. A page closes after the first complete day that reaches or exceeds
+the target, so a busy day can exceed the 200-row request-size cap. No day is split.
+`group-by=date` enables this API behavior; omitting it preserves fixed-size pages
+for exports and other callers. An explicit empty `g` disables default grouping.
+
+Date grouping makes date the dominant sort. Date ascending uses oldest days first;
+other sort selections use newest days first and preserve the selected order within
+each day. The server uses the same timezone and purchase-date basis as display,
+including date-only purchase metadata. Exact day counts scan the matching scope
+once; page rows use the shared date-bound predicates on the selected contiguous
+days, so date normalization for ordering runs only on that page. It derives `pageCount` from the packed days,
+not `ceil(total / limit)`, and returns the actual row `offset` for range labels.
+Numbered day packing preserves direct page navigation. A cursor would require
+replacing the existing numbered navigation and export contract.
 
 It is persisted in URL table state key `g`.
 
@@ -74,6 +89,29 @@ Group headers expose:
 - net account-currency total
 - category chips when grouping by category
 - label chips when grouping by labels
+
+## Amounts and matching summary
+
+Imported monetary fields remain raw. `account_type` accompanies transaction rows,
+installment details, transfer-related legs, and transfer proposals. The shared
+`transactionAccountingAmount` helper in `transaction-foreign-amount.ts` inverts
+all CREDIT amounts, including negative refunds and payments. BANK amounts retain
+their sign. The companion SQL expression uses this same accounting convention.
+Transaction table, shared detail/triage content, foreign amounts, installments,
+related-transfer amounts, and group totals use accounting signs. FX rates and
+transfer confirmation payloads retain their original semantics.
+
+The list response includes `summary`, a `TransactionSummary[]` grouped by account
+currency over every matching row before pagination. Each item contains `currency`,
+`total`, `debitCount`, `creditCount`, signed `debitCents`, signed `creditCents`, and
+`balanceCents`. Zero amounts count toward `total` only. The matching summary shows
+debit and credit counts and sums plus balance in English and Portuguese. Mixed
+currencies remain separate, with no conversion or combined monetary total.
+
+Transaction chart datasets use normalized accounting amounts. Category and label
+allocations continue to aggregate absolute magnitude. Report directions use the
+same sign helper, retaining the distinction between card refunds and bank income.
+True BANK balance anchors and historical balance calculations are unchanged.
 
 ## Selection and keyboard
 
@@ -306,7 +344,7 @@ No inferred date range is applied for that navigation.
 
 Defaults:
 
-- page size 50
+- page size 100
 - max page size 200
 
 Search:

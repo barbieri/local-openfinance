@@ -1,5 +1,8 @@
 import { useTranslation } from 'react-i18next';
-import { isForeignCurrencyTransaction } from '../../../../db/transaction-foreign-amount.js';
+import {
+  isForeignCurrencyTransaction,
+  transactionAccountingAmount,
+} from '../../../../db/transaction-foreign-amount.js';
 import { formatCurrencyAmount, formatDualCurrencyAmount } from '../../lib/format.js';
 import { formatRelativeOrAbsoluteDate } from '../../lib/format-relative-date.js';
 import type { CategoryPresentation } from '../categories/category-badge-presentation.js';
@@ -9,6 +12,7 @@ import { Tooltip } from '../ui/Tooltip.js';
 export type TransferRelatedLeg = {
   readonly transaction_id: string;
   readonly account_id: string;
+  readonly account_type?: string;
   readonly account_display_name: string;
   readonly amount_cents: number;
   readonly amount_in_account_currency_cents: number;
@@ -50,17 +54,19 @@ function resolveAnnotationCategory(
 function formatTransferAmountLabel(related: TransferRelatedLeg, locale: string): string {
   if (isForeignCurrencyTransaction(related.currency, related.account_currency)) {
     return formatDualCurrencyAmount(
-      related.amount_cents,
+      transactionAccountingAmount(related.amount_cents, related.account_type),
       related.currency,
       related.account_currency,
-      related.amount_in_account_currency_cents,
+      transactionAccountingAmount(related.amount_in_account_currency_cents, related.account_type),
       locale,
+      { signed: true },
     );
   }
   return formatCurrencyAmount(
-    related.amount_in_account_currency_cents,
+    transactionAccountingAmount(related.amount_in_account_currency_cents, related.account_type),
     related.account_currency,
     locale,
+    { signed: true },
   );
 }
 
@@ -68,10 +74,6 @@ export function TransferLinkTooltip({ kind, related }: TransferLinkTooltipProps)
   const { t, i18n } = useTranslation();
   const dateLabel = formatRelativeOrAbsoluteDate(related.occurred_at, i18n.language);
   const amountLabel = formatTransferAmountLabel(related, i18n.language);
-  const signedAmount =
-    related.amount_in_account_currency_cents >= 0
-      ? `+${amountLabel}`
-      : `-${amountLabel.replace('-', '')}`;
   const categoryPath =
     related.category_presentation?.path ?? related.category_presentation?.name ?? null;
   const annotationCategory = resolveAnnotationCategory(related.annotation, t('labels.separator'));
@@ -107,7 +109,7 @@ export function TransferLinkTooltip({ kind, related }: TransferLinkTooltipProps)
           </div>
           <div>
             <span className="text-muted-foreground">{t('columns.amount')}: </span>
-            <span className="tabular-nums font-medium">{signedAmount}</span>
+            <span className="tabular-nums font-medium">{amountLabel}</span>
             {related.amount_difference_cents > 0 && (
               <span className="text-muted-foreground">
                 {' '}

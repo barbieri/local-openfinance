@@ -587,5 +587,8 @@
   "reports.table.monthlyComparison.monthlyBalance": "Balanço do mês",
   "reports.table.monthlyComparison.mom": "Variação mensal (MoM)",
   "reports.table.monthlyComparison.incomeMom": "Rendimentos MoM",
-  "reports.table.monthlyComparison.expensesMom": "Gastos MoM"
+  "reports.table.monthlyComparison.expensesMom": "Gastos MoM",
+  "pagination.matchingDebits": "Débitos ({{count}})",
+  "pagination.matchingCredits": "Créditos ({{count}})",
+  "pagination.matchingBalance": "Saldo"
 }

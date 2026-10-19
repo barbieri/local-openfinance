@@ -2,12 +2,14 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useState } from 'react';
 import { Trans, useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import { transactionAccountingAmount } from '../../../../db/transaction-foreign-amount.js';
 import { apiJson } from '../../lib/api.js';
 import { Confidence } from '../format/Confidence.js';
 import { FormattedCurrency } from '../format/FormattedCurrency.js';
 import { Dialog } from '../ui/Dialog.js';
 
 export type TransferLeg = {
+  readonly accountType?: string;
   readonly id: string;
   readonly accountId: string;
   readonly occurredAt: string;
@@ -210,7 +212,10 @@ function TransferLegLine({
       <span className="font-medium text-muted-foreground">{label}: </span>
       <span>{accountName ?? leg.accountId}</span>
       <span className="text-muted-foreground"> · </span>
-      <FormattedCurrency amountCents={leg.amountCents} currency="BRL" />
+      <FormattedCurrency
+        amountCents={transactionAccountingAmount(leg.amountCents, leg.accountType)}
+        currency="BRL"
+      />
       <span className="text-muted-foreground">
         {' '}
         · {leg.occurredAt.slice(0, 16).replace('T', ' ')}

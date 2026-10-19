@@ -53,3 +53,22 @@ export function computeForeignExchangeRate(
 
   return Math.abs(accountAmountCents) / Math.abs(foreignAmountCents);
 }
+
+export function transactionAccountingAmount(
+  amountCents: number,
+  accountType: string | undefined,
+): number {
+  return accountType?.toUpperCase() === 'CREDIT' ? -amountCents : amountCents;
+}
+
+export const TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL = `(CASE WHEN UPPER(a.type) = 'CREDIT' THEN -1 ELSE 1 END) * ${TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL}`;
+
+export type TransactionSummary = {
+  readonly currency: string;
+  readonly total: number;
+  readonly debitCount: number;
+  readonly creditCount: number;
+  readonly debitCents: number;
+  readonly creditCents: number;
+  readonly balanceCents: number;
+};

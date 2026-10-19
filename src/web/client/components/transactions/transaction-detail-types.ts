@@ -3,6 +3,7 @@ import type { TransferRelatedLeg } from './TransferLinkTooltip.js';
 export type TransactionDetailRow = {
   readonly id: string;
   readonly account_id: string;
+  readonly account_type?: string;
   readonly local_date: string;
   readonly occurred_at: string;
   readonly display_occurred_at?: string;

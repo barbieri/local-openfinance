@@ -64,6 +64,7 @@ export type TransactionTransferGroup = {
 export type TransactionTransferRelatedLeg = {
   readonly transaction_id: string;
   readonly account_id: string;
+  readonly account_type?: string;
   readonly account_display_name: string;
   readonly amount_cents: number;
   readonly amount_in_account_currency_cents: number;
@@ -103,6 +104,7 @@ export type TransactionCreditCardInfo = {
 export type TransactionRow = {
   readonly id: string;
   readonly account_id: string;
+  readonly account_type?: string;
   readonly occurred_at: string;
   readonly amount_cents: number;
   readonly amount_in_account_currency_cents: number | null;
@@ -255,7 +257,7 @@ const TRANSACTION_ROW_SELECT_SQL = `
   cat.name_translated AS category_translated_name,
   t.merchant_name, t.payment_type, t.status,
   t.raw_json, t.synced_at, t.deleted_at, t.delete_reason, a.connection_item_id, c.connector_name,
-  a.currency AS account_currency`;
+  a.currency AS account_currency, a.type AS account_type`;
 
 export function loadTransactions(db: DatabaseSync): TransactionRow[] {
   return db
@@ -641,6 +643,7 @@ function loadTransactionTransferGroup(
               ${TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL.replaceAll('t.', 'other_t.')} AS related_amount_in_account_currency_cents,
               other_t.currency AS related_currency,
               other_a.currency AS related_account_currency,
+              other_a.type AS related_account_type,
               other_t.occurred_at AS related_occurred_at,
               other_t.description AS related_description,
               other_t.merchant_name AS related_merchant_name,
@@ -710,6 +713,7 @@ function buildTransferRelatedLeg(
   return {
     transaction_id: transactionId,
     account_id: String(relatedRow['related_account_id']),
+    account_type: String(relatedRow['related_account_type'] ?? 'BANK'),
     account_display_name: resolveAccountDisplayName(db, String(relatedRow['related_account_id'])),
     amount_cents: Number(relatedRow['related_amount_cents']),
     amount_in_account_currency_cents: accountAmountCents,
@@ -789,6 +793,7 @@ function mapTransactionRow(row: unknown): TransactionRow {
   return {
     id: String(record['id']),
     account_id: String(record['account_id']),
+    account_type: String(record['account_type'] ?? 'BANK'),
     occurred_at: String(record['occurred_at']),
     amount_cents: Number(record['amount_cents']),
     amount_in_account_currency_cents:

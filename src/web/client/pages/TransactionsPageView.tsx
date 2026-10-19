@@ -135,6 +135,7 @@ export function TransactionsPageView({
         {data && data.total > 0 ? (
           <TransactionMatchSummary
             total={data.total}
+            summary={data.summary}
             filters={filters}
             filterSummaryParts={filterSummaryParts}
             t={t}
@@ -225,6 +226,8 @@ export function TransactionsPageView({
           pageCount={data.pageCount}
           total={data.total}
           pageSize={data.limit}
+          rowOffset={data.offset}
+          rowCount={data.rows.length}
           onPageChange={setPage}
         />
       )}

@@ -37,12 +37,16 @@ export function Pagination({
   pageCount,
   total,
   pageSize,
+  rowOffset,
+  rowCount,
   onPageChange,
 }: {
   readonly page: number;
   readonly pageCount: number;
   readonly total: number;
   readonly pageSize: number;
+  readonly rowOffset?: number;
+  readonly rowCount?: number;
   readonly onPageChange: (page: number) => void;
 }) {
   const { t } = useTranslation();
@@ -50,8 +54,9 @@ export function Pagination({
     return null;
   }
 
-  const start = total === 0 ? 0 : (page - 1) * pageSize + 1;
-  const end = Math.min(page * pageSize, total);
+  const offset = rowOffset ?? (page - 1) * pageSize;
+  const start = total === 0 ? 0 : offset + 1;
+  const end = Math.min(offset + (rowCount ?? pageSize), total);
   const pageNumbers = buildPageNumbers(page, pageCount);
 
   const navButtonClass =

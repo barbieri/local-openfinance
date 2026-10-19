@@ -23,6 +23,7 @@ export {
 export type TransferKind = 'internal_transfer' | 'investment_funding' | 'bill_payment';
 
 export type TransferLeg = {
+  readonly accountType?: string;
   readonly id: string;
   readonly accountId: string;
   readonly occurredAt: string;
@@ -53,6 +54,7 @@ export function toTransferLeg(candidate: TransactionCandidate): TransferLeg {
   return {
     id: candidate.id,
     accountId: candidate.accountId,
+    accountType: candidate.accountType,
     occurredAt: candidate.occurredAt,
     amountCents: candidate.amountCents,
     merchantName: candidate.merchantName,

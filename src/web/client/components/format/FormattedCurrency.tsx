@@ -5,7 +5,7 @@ import { formatCurrencyAmount } from '../../lib/format.js';
 type FormattedCurrencyProps = {
   readonly amountCents: number;
   readonly currency?: string;
-  readonly className?: string;
+  readonly className?: string | undefined;
   readonly signed?: boolean;
 };
 

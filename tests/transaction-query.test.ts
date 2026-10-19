@@ -1,7 +1,8 @@
 import { DatabaseSync } from 'node:sqlite';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { ensureAnnotationLabel, saveEntryAnnotation } from '../src/annotation/store.js';
 import { migrateDatabase } from '../src/db/migrate.js';
+import * as transactionDates from '../src/db/transaction-date-basis.js';
 import {
   buildTransactionCommonWhere,
   createTransactionWebListFilters,
@@ -533,5 +534,209 @@ describe('listEnrichedTransactionsPage', () => {
     expect(onlyInstallments.rows[0]?.id).toBe('tx-installment');
     expect(hideInstallments.total).toBe(1);
     expect(hideInstallments.rows[0]?.id).toBe('tx-lump');
+  });
+});
+
+describe('date-packed pages and accounting summaries', () => {
+  it('packs complete local days into distinct numbered pages with an oversized purchase-date day', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    for (let index = 0; index < 205; index += 1) {
+      seedTransaction(db, {
+        id: `large-${index.toString().padStart(3, '0')}`,
+        occurredAt: '2026-06-10T12:00:00.000Z',
+        merchantName: 'Shop',
+        description: 'Purchase',
+        amountCents: index,
+        rawJson: { creditCardMetadata: { purchaseDate: '2026-06-03' } },
+      });
+    }
+    for (const [id, occurredAt] of [
+      ['local-2', '2026-06-03T01:00:00.000Z'],
+      ['local-1', '2026-06-02T01:00:00.000Z'],
+    ]) {
+      if (!id || !occurredAt) throw new Error('Missing test fixture');
+      seedTransaction(db, {
+        id,
+        occurredAt,
+        merchantName: 'Shop',
+        description: 'Purchase',
+        amountCents: -5,
+      });
+    }
+    const filters = createTransactionWebListFilters({ useCreditPurchaseDate: true });
+    const page = (number: number) =>
+      listEnrichedTransactionsPage(db, filters, {
+        limit: 100,
+        offset: (number - 1) * 100,
+        groupByDate: true,
+        sort: { column: 'amount', descending: false },
+        timeZone: 'America/Sao_Paulo',
+      });
+    const first = page(1);
+    const second = page(2);
+    expect(first.pageCount).toBe(2);
+    expect(first.rows).toHaveLength(205);
+    expect(first.rows.map((row) => row.local_date)).toEqual(Array(205).fill('2026-06-03'));
+    expect(first.rows[0]?.amount_cents).toBe(0);
+    expect(first.rows.at(-1)?.amount_cents).toBe(204);
+    expect(second.offset).toBe(205);
+    expect(second.rows.map((row) => row.id)).toEqual(['local-2', 'local-1']);
+    expect(new Set([...first.rows, ...second.rows].map((row) => row.id)).size).toBe(207);
+    expect(page(3).rows).toEqual([]);
+    const ascending = listEnrichedTransactionsPage(db, filters, {
+      limit: 1,
+      offset: 0,
+      groupByDate: true,
+      sort: { column: 'date', descending: false },
+      timeZone: 'America/Sao_Paulo',
+    });
+    expect(ascending.rows.map((row) => row.id)).toEqual(['local-1']);
+    expect(ascending.pageCount).toBe(3);
+    db.close();
+  });
+
+  it('normalizes the full scope once and only normalizes selected rows for page ordering', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    for (let day = 1; day <= 10; day += 1) {
+      for (let index = 0; index < 100; index += 1) {
+        seedTransaction(db, {
+          id: `${day}-${index}`,
+          occurredAt: `2026-06-${String(day).padStart(2, '0')}T12:00:00.000Z`,
+          merchantName: 'Shop',
+          description: 'Purchase',
+          amountCents: -100,
+        });
+      }
+    }
+    const normalize = vi.spyOn(transactionDates, 'resolveTransactionLocalDate');
+    try {
+      const result = listEnrichedTransactionsPage(db, createTransactionWebListFilters(), {
+        limit: 100,
+        offset: 100,
+        groupByDate: true,
+        sort: { column: 'date', descending: true },
+        timeZone: 'America/Sao_Paulo',
+      });
+      expect(result.rows).toHaveLength(100);
+      expect(result.rows.every((row) => row.local_date === '2026-06-09')).toBe(true);
+      expect(result.offset).toBe(100);
+      expect(result.pageCount).toBe(10);
+      expect(normalize.mock.calls.length).toBeGreaterThanOrEqual(1000);
+      expect(normalize.mock.calls.length).toBeLessThan(1500);
+    } finally {
+      normalize.mockRestore();
+      db.close();
+    }
+  });
+
+  it('uses canonical purchase-date bounds across a daylight-saving transition and existing filters', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    const fixtures = [
+      ['before', '2026-03-08T04:59:59.999Z', 'Included'],
+      ['start', '2026-03-08T05:00:00.000Z', 'Included'],
+      ['calendar', '2026-03-08', 'Included'],
+      ['offset', '2026-03-08T22:00:00-04:00', 'Included'],
+      ['end', '2026-03-09T03:59:59.999Z', 'Included'],
+      ['next', '2026-03-09T04:00:00.000Z', 'Included'],
+      ['excluded', '2026-03-08', 'Excluded'],
+    ];
+    for (const [id, purchaseDate, description] of fixtures) {
+      if (!id || !purchaseDate || !description) throw new Error('Missing test fixture');
+      seedTransaction(db, {
+        id,
+        occurredAt: '2026-06-01T12:00:00.000Z',
+        merchantName: 'Shop',
+        description,
+        amountCents: -100,
+        rawJson: { creditCardMetadata: { purchaseDate } },
+      });
+    }
+    const page = (offset: number) =>
+      listEnrichedTransactionsPage(
+        db,
+        createTransactionWebListFilters({
+          useCreditPurchaseDate: true,
+          descriptionQuery: 'Included',
+          startDate: '2026-03-08',
+          endDate: '2026-03-09',
+        }),
+        {
+          limit: 1,
+          offset,
+          groupByDate: true,
+          sort: { column: 'date', descending: false },
+          timeZone: 'America/New_York',
+        },
+      );
+    expect(
+      page(0)
+        .rows.map((row) => row.id)
+        .toSorted(),
+    ).toEqual(['calendar', 'end', 'offset', 'start']);
+    expect(page(0).pageCount).toBe(2);
+    expect(page(1).rows.map((row) => row.id)).toEqual(['next']);
+    expect(page(1).offset).toBe(4);
+    db.close();
+  });
+
+  it('summarizes every filtered match by account currency with card refunds and zero amounts', () => {
+    const db = new DatabaseSync(':memory:');
+    migrateDatabase(db);
+    seedBase(db);
+    db.prepare(`INSERT INTO accounts (id, connection_item_id, type, name, currency, raw_json, synced_at)
+      VALUES ('card', 'item-1', 'CREDIT', 'Card', 'BRL', '{}', '2026-06-10'),
+             ('usd', 'item-1', 'BANK', 'USD', 'USD', '{}', '2026-06-10')`).run();
+    const insert = db.prepare(`INSERT INTO transactions (id, account_id, occurred_at, amount_cents,
+      amount_in_account_currency_cents, currency, description, raw_json, synced_at)
+      VALUES (?, ?, '2026-06-01T12:00:00.000Z', ?, ?, ?, ?, '{}', '2026-06-10')`);
+    insert.run('purchase', 'card', 100, 500, 'USD', 'Included');
+    insert.run('refund', 'card', -50, -250, 'USD', 'Included');
+    insert.run('bank-debit', 'acc-1', -100, -100, 'BRL', 'Included');
+    insert.run('bank-credit', 'acc-1', 200, 200, 'BRL', 'Included');
+    insert.run('zero', 'acc-1', 0, 0, 'BRL', 'Included');
+    insert.run('dollars', 'usd', 1000, 1000, 'USD', 'Included');
+    insert.run('excluded', 'card', 99999, 99999, 'BRL', 'Excluded');
+    const result = listEnrichedTransactionsPage(
+      db,
+      createTransactionWebListFilters({ descriptionQuery: 'Included' }),
+      { limit: 1, offset: 0, sort: { column: 'date', descending: true }, timeZone: 'UTC' },
+    );
+    expect(result.rows).toHaveLength(1);
+    expect(result.total).toBe(6);
+    expect(result.summary).toEqual([
+      {
+        currency: 'BRL',
+        total: 5,
+        debitCount: 2,
+        creditCount: 2,
+        debitCents: -600,
+        creditCents: 450,
+        balanceCents: -150,
+      },
+      {
+        currency: 'USD',
+        total: 1,
+        debitCount: 0,
+        creditCount: 1,
+        debitCents: 0,
+        creditCents: 1000,
+        balanceCents: 1000,
+      },
+    ]);
+    const card = listEnrichedTransactionsPage(
+      db,
+      createTransactionWebListFilters({ accountIds: ['card'], transactionIds: ['purchase'] }),
+      { limit: 1, offset: 0, sort: { column: 'date', descending: true } },
+    ).rows[0];
+    expect(card?.amount_cents).toBe(100);
+    expect(card?.amount_in_account_currency_cents).toBe(500);
+    expect(card?.account_type).toBe('CREDIT');
+    db.close();
   });
 });

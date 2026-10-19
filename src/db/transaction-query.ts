@@ -12,6 +12,7 @@ import {
   DELETED_VISIBILITIES,
   type DeletedVisibility,
 } from './entry-deletion.js';
+import { resolveTransactionLocalDate } from './transaction-date-basis.js';
 import {
   type EnrichedTransaction,
   enrichTransactionRow,
@@ -22,12 +23,16 @@ import {
 import {
   appendAccountFilter,
   appendTransactionCommonFilters,
+  appendTransactionDateBounds,
   TRANSACTION_FILTERED_FROM_SQL,
   type TransactionClassificationFilter,
   type TransactionCommonSqlFilters,
   transactionOccurredAtSql,
 } from './transaction-filter-sql.js';
-import { TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL } from './transaction-foreign-amount.js';
+import {
+  TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL,
+  type TransactionSummary,
+} from './transaction-foreign-amount.js';
 import { buildTransactionFtsMatch, type TransactionFtsColumn } from './transaction-fts.js';
 
 export type {
@@ -97,6 +102,7 @@ export type TransactionListPageOptions = {
   readonly limit: number;
   readonly offset: number;
   readonly sort: TransactionSortSpec;
+  readonly groupByDate?: boolean | undefined;
   readonly timeZone?: string | undefined;
   readonly locale?: string | undefined;
 };
@@ -104,6 +110,8 @@ export type TransactionListPageOptions = {
 export type TransactionListPageResult = {
   readonly rows: readonly EnrichedTransaction[];
   readonly total: number;
+  readonly summary: readonly TransactionSummary[];
+  readonly pageCount: number;
   readonly limit: number;
   readonly offset: number;
 };
@@ -121,7 +129,7 @@ const SORTABLE_COLUMN_BUILDERS: Record<string, (filters: TransactionWebListFilte
      LIMIT 1),
     t.description
   )`,
-  amount: () => TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL,
+  amount: () => TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL,
   category: () => 'COALESCE(tco.category_id, t.category_id)',
 };
 
@@ -192,18 +200,66 @@ function queryTransactionPage(
     (db.prepare(countSql).get(...where.params) as { readonly total: number }).total,
   );
 
-  const idSql = `
-    SELECT t.id
-    ${fromSql}
-    ORDER BY ${orderBy}
-    LIMIT ? OFFSET ?`;
+  const summary = db
+    .prepare(`
+    SELECT a.currency AS currency, COUNT(*) AS total,
+      SUM(CASE WHEN ${TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL} < 0 THEN 1 ELSE 0 END) AS debitCount,
+      SUM(CASE WHEN ${TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL} > 0 THEN 1 ELSE 0 END) AS creditCount,
+      SUM(MIN(${TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL}, 0)) AS debitCents,
+      SUM(MAX(${TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL}, 0)) AS creditCents,
+      SUM(${TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL}) AS balanceCents
+    ${fromSql} GROUP BY a.currency ORDER BY a.currency
+  `)
+    .all(...where.params) as TransactionSummary[];
 
-  const idParams = [...where.params, options.limit, options.offset];
-
+  let actualOffset = options.offset;
+  let pageCount = Math.ceil(total / options.limit);
+  let pageWhere = '';
+  let pageOrderBy = orderBy;
+  let pageParams: SQLInputValue[] = [options.limit, options.offset];
+  let paginationSql = 'LIMIT ? OFFSET ?';
+  if (options.groupByDate) {
+    db.function('lof_transaction_local_date', { deterministic: true }, (value, zone) =>
+      resolveTransactionLocalDate(String(value), String(zone)),
+    );
+    const dateSql = `lof_transaction_local_date(${transactionOccurredAtSql(filters.useCreditPurchaseDate)}, ?)`;
+    const direction = options.sort.column === 'date' && !options.sort.descending ? 'ASC' : 'DESC';
+    const days = db
+      .prepare(`SELECT ${dateSql} AS day, COUNT(*) AS count
+      ${fromSql} GROUP BY day ORDER BY day ${direction}`)
+      .all(timeZone, ...where.params) as { day: string; count: number }[];
+    const pages = packTransactionDatePages(days, options.limit);
+    pageCount = pages.length;
+    const requestedPage = Math.floor(options.offset / options.limit);
+    const selectedDays = pages[requestedPage] ?? [];
+    const previousDays = new Set(pages.slice(0, requestedPage).flat());
+    actualOffset = days.reduce(
+      (count, day) => count + (previousDays.has(day.day) ? day.count : 0),
+      0,
+    );
+    const chronologicalDays = selectedDays.toSorted();
+    const dateParts: string[] = [];
+    pageParams = [];
+    appendTransactionDateBounds(
+      dateParts,
+      pageParams,
+      {
+        startDate: chronologicalDays[0] ?? null,
+        endDate: chronologicalDays.at(-1) ?? null,
+        useCreditPurchaseDate: filters.useCreditPurchaseDate,
+      },
+      timeZone,
+    );
+    pageWhere = selectedDays.length > 0 ? `AND ${dateParts.join(' AND ')}` : 'AND 0';
+    pageOrderBy = `${dateSql} ${direction}, ${orderBy}`;
+    pageParams.push(timeZone);
+    paginationSql = '';
+  }
   const ids = db
-    .prepare(idSql)
-    .all(...idParams)
-    .map((row) => String((row as Record<string, unknown>)['id']));
+    .prepare(`SELECT t.id ${fromSql} ${pageWhere}
+    ORDER BY ${pageOrderBy} ${paginationSql}`)
+    .all(...where.params, ...pageParams)
+    .map((row) => String(row['id']));
 
   const categoryIndexReadonly: ReadonlyMap<string, CategoryIndexEntry> = categoryIndex;
   const billLinks = loadCreditCardBillLinksForTransactions(db, ids);
@@ -221,9 +277,31 @@ function queryTransactionPage(
   return {
     rows,
     total,
+    summary,
+    pageCount,
     limit: options.limit,
-    offset: options.offset,
+    offset: actualOffset,
   };
+}
+
+function packTransactionDatePages(
+  days: readonly { readonly day: string; readonly count: number }[],
+  targetSize: number,
+): string[][] {
+  const pages: string[][] = [];
+  let currentDays: string[] = [];
+  let currentCount = 0;
+  for (const day of days) {
+    currentDays.push(day.day);
+    currentCount += day.count;
+    if (currentCount >= targetSize) {
+      pages.push(currentDays);
+      currentDays = [];
+      currentCount = 0;
+    }
+  }
+  if (currentDays.length > 0) pages.push(currentDays);
+  return pages;
 }
 
 export function buildTransactionBalanceScopeWhere(

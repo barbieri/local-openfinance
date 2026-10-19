@@ -116,6 +116,10 @@ for analysis): `credit-card-details` (live Banco MCP API call),
 - BANK accounts: expense `< 0`, income `> 0`.
 - CREDIT accounts: purchases and installments `> 0` (DEBIT, PAGAMENTO);
   statement payments/refunds `< 0` (CREDIT, PAGAMENTO_FATURA).
+- Web transaction displays and matching summaries normalize CREDIT signs by
+  negating the raw amount. Storage and CLI amounts stay raw. Use
+  `transactionAccountingAmount` and its SQL companion in
+  `src/db/transaction-foreign-amount.ts` for accounting contributions.
 - The CLI colors amounts by this sign (`src/db/transactions/present.ts`
   in the app repo); re-verify there if the convention ever changes.
 - Money is integer cents: aggregate in cents, present with `/ 100.0`

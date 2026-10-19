@@ -21,6 +21,7 @@ export function registerTransferRoutes(app: Hono, ctx: WebServerContext): void {
     const suggestion = ctx.db
       .prepare(
         `SELECT s.kind, s.confidence, s.amount_confidence, s.time_confidence,
+                source_account.type AS source_account_type, destination_account.type AS destination_account_type,
                 source.id AS source_id, source.account_id AS source_account_id,
                 source.occurred_at AS source_occurred_at, source.amount_cents AS source_amount_cents,
                 source.merchant_name AS source_merchant_name, source.description AS source_description,
@@ -30,6 +31,8 @@ export function registerTransferRoutes(app: Hono, ctx: WebServerContext): void {
          FROM transfer_link_suggestions s
          JOIN transactions source ON source.id = s.source_entry_id
          JOIN transactions destination ON destination.id = s.destination_entry_id
+         JOIN accounts source_account ON source_account.id = source.account_id
+         JOIN accounts destination_account ON destination_account.id = destination.account_id
          WHERE (source_entry_id = ? OR destination_entry_id = ?)
            AND source.deleted_at IS NULL
            AND destination.deleted_at IS NULL
@@ -48,6 +51,7 @@ export function registerTransferRoutes(app: Hono, ctx: WebServerContext): void {
     const leg = (prefix: 'source' | 'destination') => ({
       id: String(suggestion[`${prefix}_id`]),
       accountId: String(suggestion[`${prefix}_account_id`]),
+      accountType: String(suggestion[`${prefix}_account_type`]),
       occurredAt: String(suggestion[`${prefix}_occurred_at`]),
       amountCents: Number(suggestion[`${prefix}_amount_cents`]),
       merchantName: suggestion[`${prefix}_merchant_name`] as string | null,

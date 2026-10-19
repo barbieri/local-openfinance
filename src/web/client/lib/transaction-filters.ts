@@ -5,7 +5,7 @@ import type { TableUrlState } from './table-url-state.js';
 
 export const DEFAULT_TRANSACTION_DATE_PRESET = 'this-month';
 export const TRANSACTION_DATE_ALL = 'all';
-export const DEFAULT_TRANSACTION_PAGE_SIZE = 50;
+export const DEFAULT_TRANSACTION_PAGE_SIZE = 100;
 export const TRANSACTION_EXPORT_PAGE_SIZE = 200;
 
 function trimNonEmptyParts(parts: readonly string[]): string[] {
@@ -391,6 +391,7 @@ export function buildTransactionListQuery(state: TableUrlState): string {
   if (state.display?.date === 'credit-purchase') {
     params.set('display-date', 'credit-purchase');
   }
+  if ((state.g ?? ['date']).includes('date')) params.set('group-by', 'date');
   appendTransactionPaginationParams(params, state);
   appendTransactionSortParams(params, state.o);
   return params.toString();

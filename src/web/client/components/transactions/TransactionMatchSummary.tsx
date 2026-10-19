@@ -1,18 +1,22 @@
 import type { TFunction } from 'i18next';
+import type { TransactionSummary } from '../../../../db/transaction-foreign-amount.js';
 import {
   formatLocalDateRangeLabel,
   resolveEffectiveTransactionDateFilter,
 } from '../../lib/transaction-date-navigation.js';
 import type { TransactionFilterSummaryPart } from '../../lib/transaction-filters.js';
+import { FormattedCurrency } from '../format/FormattedCurrency.js';
 
 export function TransactionMatchSummary({
   total,
+  summary,
   filters,
   filterSummaryParts,
   t,
   locale,
 }: {
   readonly total: number;
+  readonly summary: readonly TransactionSummary[];
   readonly filters: Record<string, string | string[]>;
   readonly filterSummaryParts: readonly TransactionFilterSummaryPart[];
   readonly t: TFunction;
@@ -29,9 +33,30 @@ export function TransactionMatchSummary({
   }
   const filtersLabel = filterLabels.join(', ');
   return (
-    <p className="text-sm text-muted-foreground">
-      {t('pagination.matchingTotalScoped', { total, period: period ?? t('pagination.allPeriods') })}
-      {filtersLabel ? ` · ${t('filters.active')}: ${filtersLabel}` : ''}
-    </p>
+    <div className="space-y-1 text-sm text-muted-foreground">
+      <p>
+        {t('pagination.matchingTotalScoped', {
+          total,
+          period: period ?? t('pagination.allPeriods'),
+        })}
+        {filtersLabel ? ` · ${t('filters.active')}: ${filtersLabel}` : ''}
+      </p>
+      {summary.map((item) => (
+        <p key={item.currency} className="flex flex-wrap gap-x-3">
+          <span>
+            {t('pagination.matchingDebits', { count: item.debitCount })}{' '}
+            <FormattedCurrency amountCents={item.debitCents} currency={item.currency} />
+          </span>
+          <span>
+            {t('pagination.matchingCredits', { count: item.creditCount })}{' '}
+            <FormattedCurrency amountCents={item.creditCents} currency={item.currency} />
+          </span>
+          <span>
+            {t('pagination.matchingBalance')}{' '}
+            <FormattedCurrency amountCents={item.balanceCents} currency={item.currency} />
+          </span>
+        </p>
+      ))}
+    </div>
   );
 }

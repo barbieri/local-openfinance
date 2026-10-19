@@ -16,7 +16,7 @@ import {
 } from './balance-chart-query.js';
 import { buildCategoryIndex } from './category-display.js';
 import { TRANSACTION_FILTERED_FROM_SQL } from './transaction-filter-sql.js';
-import { TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL } from './transaction-foreign-amount.js';
+import { TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL } from './transaction-foreign-amount.js';
 import {
   buildTransactionBalanceScopeWhere,
   buildTransactionListWhere,
@@ -89,7 +89,7 @@ function buildFilteredTransactionsCte(where: {
         SELECT
           t.id,
           t.occurred_at,
-          ${TRANSACTION_ACCOUNT_AMOUNT_CENTS_SQL} AS amount_cents,
+          ${TRANSACTION_ACCOUNTING_AMOUNT_CENTS_SQL} AS amount_cents,
           a.currency AS currency,
           COALESCE(tco.category_id, t.category_id) AS category_id
         ${TRANSACTION_FILTERED_FROM_SQL}

@@ -62,7 +62,7 @@ export function appendTransactionCommonFilters(
   filters: TransactionCommonSqlFilters,
   timeZone: string,
 ): void {
-  appendDateBounds(parts, params, filters, timeZone);
+  appendTransactionDateBounds(parts, params, filters, timeZone);
   appendTransactionIdsFilter(parts, params, filters.transactionIds);
   appendAccountFilter(parts, params, filters.accountIds);
   appendClassificationFilter(parts, filters.classification);
@@ -98,7 +98,7 @@ export function appendAccountFilter(
   params.push(...accountIds);
 }
 
-function appendDateBounds(
+export function appendTransactionDateBounds(
   parts: string[],
   params: SQLInputValue[],
   filters: Pick<TransactionCommonSqlFilters, 'startDate' | 'endDate' | 'useCreditPurchaseDate'>,

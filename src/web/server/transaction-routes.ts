@@ -52,6 +52,7 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
       limit: pagination.pageSize,
       offset: pagination.offset,
       sort: c.req.query('sort') ?? undefined,
+      groupByDate: c.req.query('group-by')?.split(',').includes('date') ?? false,
       locale: parseRequestLocale(c.req.query('locale')),
     });
     return c.json(result);
@@ -86,6 +87,7 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
       limit: pagination.pageSize,
       offset: pagination.offset,
       sort: c.req.query('sort') ?? undefined,
+      groupByDate: c.req.query('group-by')?.split(',').includes('date') ?? false,
       locale: parseRequestLocale(c.req.query('locale')),
     });
     return c.json(result);
@@ -123,6 +125,7 @@ export function registerTransactionRoutes(app: Hono, ctx: WebServerContext): voi
               local_date: firstInstallment.local_date,
               occurred_at: firstInstallment.occurred_at,
               amount_cents: firstInstallment.amount_cents,
+              account_type: firstInstallment.account_type,
               amount_in_account_currency_cents: firstInstallment.amount_in_account_currency_cents,
               currency: firstInstallment.currency,
               account_currency: firstInstallment.account_currency,

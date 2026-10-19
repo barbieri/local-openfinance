@@ -16,6 +16,7 @@ import {
 export type EnrichedTransactionListResult = {
   readonly rows: ReturnType<typeof listEnrichedTransactionsPage>['rows'];
   readonly total: number;
+  readonly summary: ReturnType<typeof listEnrichedTransactionsPage>['summary'];
   readonly limit: number;
   readonly offset: number;
   readonly page: number;
@@ -51,6 +52,7 @@ export function listEnrichedTransactionPage(
     readonly limit: number;
     readonly offset: number;
     readonly sort?: string | undefined;
+    readonly groupByDate?: boolean | undefined;
     readonly timeZone?: string | undefined;
     readonly locale?: string | undefined;
   },
@@ -59,15 +61,17 @@ export function listEnrichedTransactionPage(
     limit: options.limit,
     offset: options.offset,
     sort: parseTransactionSort(options.sort),
+    groupByDate: options.groupByDate,
     timeZone: options.timeZone ?? resolveLocalTimeZone(),
     locale: options.locale,
   });
   return {
     rows: result.rows,
     total: result.total,
+    summary: result.summary,
     limit: result.limit,
     offset: result.offset,
     page: Math.floor(options.offset / options.limit) + 1,
-    pageCount: result.total === 0 ? 0 : Math.ceil(result.total / options.limit),
+    pageCount: result.pageCount,
   };
 }

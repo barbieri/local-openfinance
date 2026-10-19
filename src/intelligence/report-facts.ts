@@ -8,6 +8,7 @@ import { buildAnnotationLabelIndex } from '../db/annotation-labels.js';
 import { listEnrichedTransactionPage } from '../db/enriched-transactions.js';
 import { allSql } from '../db/sqlite-query.js';
 import type { EnrichedTransaction } from '../db/transaction-details.js';
+import { transactionAccountingAmount } from '../db/transaction-foreign-amount.js';
 import { createTransactionWebListFilters } from '../db/transaction-query.js';
 import { readPaymentDocumentsFromRawJson } from '../openfinance/payment-document.js';
 import type { ResolvedConfig } from '../types.js';
@@ -284,8 +285,9 @@ function resolveFact(input: {
 }
 
 function resolveDirection(accountType: string, signedCents: number): ReportFactDirection {
-  if (accountType === 'CREDIT') return signedCents >= 0 ? 'expense' : 'refund';
-  return signedCents < 0 ? 'expense' : 'income';
+  const amount = transactionAccountingAmount(signedCents, accountType);
+  if (amount < 0 || (amount === 0 && accountType === 'CREDIT')) return 'expense';
+  return accountType === 'CREDIT' ? 'refund' : 'income';
 }
 
 function isUsableSuggestion(

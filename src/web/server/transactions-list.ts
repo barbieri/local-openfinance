@@ -16,7 +16,7 @@ import {
   type TransactionWebListFilters,
 } from '../../db/transaction-query.js';
 
-export const DEFAULT_TRANSACTION_PAGE_SIZE = 50;
+export const DEFAULT_TRANSACTION_PAGE_SIZE = 100;
 export const MAX_TRANSACTION_PAGE_SIZE = 200;
 
 export type TransactionPagination = {

@@ -3,6 +3,7 @@ import type { OnChangeFn, SortingState } from '@tanstack/react-table';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { toast } from 'sonner';
+import type { TransactionSummary } from '../../../db/transaction-foreign-amount.js';
 import type { TransactionChartsState } from '../components/charts/TransactionCharts.js';
 import type { DataTableRowGroup } from '../components/data-table/data-table-row-group.js';
 import type { LabelRecord } from '../components/labels/LabelEditDialog.js';
@@ -49,6 +50,7 @@ import { isUnclassifiedTransaction } from './transactions-page-utils.js';
 type TransactionListResponse = {
   readonly rows: TransactionRow[];
   readonly total: number;
+  readonly summary: readonly TransactionSummary[];
   readonly limit: number;
   readonly offset: number;
   readonly page: number;
@@ -632,7 +634,7 @@ export function useTransactionsPageController(): TransactionsPageViewProps {
           const nextGroupBy = resolveTransactionGroupBy(prev.g).filter(
             (field) => field !== groupByField,
           );
-          return { ...prev, g: nextGroupBy.length > 0 ? nextGroupBy : undefined };
+          return { ...prev, g: nextGroupBy, p: 1 };
         }
         if (partId === 'display-date') {
           const nextDisplay = { ...prev.display };
@@ -657,7 +659,7 @@ export function useTransactionsPageController(): TransactionsPageViewProps {
     setUrlState((prev) => {
       const current = resolveTransactionGroupBy(prev.g);
       const next = checked ? [...current, field] : current.filter((value) => value !== field);
-      return { ...prev, g: next.length > 0 ? next : undefined };
+      return { ...prev, g: next, p: 1 };
     });
   };
 
