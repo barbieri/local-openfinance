@@ -7,9 +7,20 @@ sync.
 
 Banco MCP enforces roughly 2 requests per second per workspace.
 
-`OpenFinanceClient` retries HTTP 429 using `retry_after_ms` from the error body.
-It also retries HTTP 500 responses that explicitly identify Banco MCP's provider
-queue/rate limit, which some upstream paths return instead of HTTP 429.
+`OpenFinanceClient` shares a process-wide request queue across all client instances.
+It spaces request starts by at least `OPENFINANCE_MIN_REQUEST_INTERVAL_MS`
+(default 550 ms). Only issuance is paced; responses can remain in flight together.
+This budget does not coordinate separate processes.
+
+HTTP 429, HTTP 500 with explicit provider queue/rate-limit text or code, and
+`ok: false` envelopes identifying a rate limit (including `upstream_rate_limit`)
+are retried up to eight total attempts. Other upstream envelopes fail immediately.
+Delays prefer the `Retry-After` header (seconds or HTTP-date), then a finite,
+nonnegative `error.retry_after_ms` body field, then exponential backoff starting
+at 500 ms, doubling to a 30 s cap, with jitter between 50% and 100% of that delay.
+Past header dates are clamped to zero. Retries also pass through request pacing.
+Exhausted HTTP failures retain their status-specific error hints; exhausted
+`ok: false` envelopes retain the `upstream` error kind.
 
 ## Error reporting
 
