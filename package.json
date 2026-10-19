@@ -1,6 +1,6 @@
 {
   "name": "local-openfinance",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Localhost web app for Brazilian Open Finance. Syncs Banco MCP into SQLite, classifies expenses, and runs LLM reports.",
   "repository": {
     "type": "git",
