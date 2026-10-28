@@ -58,7 +58,11 @@ The REST contract is documented in [`banco-mcp-openapi.json`](./banco-mcp-openap
 
 - `OPENFINANCE_API_KEY` — required for sync
 - `OPENFINANCE_MIN_REQUEST_INTERVAL_MS` — optional; minimum process-wide request spacing in milliseconds, default `550` (roughly 2 requests/s). Use a finite nonnegative number; `0` disables spacing. Invalid values use the default.
+- `OPENFINANCE_MAX_ATTEMPTS` — optional; total attempts per request, default `12`. Use a finite integer of at least `1`; invalid values use the default.
+- `OPENFINANCE_REQUEST_TIMEOUT_MS` — optional; timeout per outbound request (including its response body), default `30000` milliseconds. Use a finite positive number; invalid values use the default. Timeouts are retried within the attempt budget.
 - `OPENFINANCE_BASE_URL` — optional; defaults to `https://api.mcp.ai/api/openfinance`
+
+Retry delays prefer `Retry-After`, then `error.retry_after_ms`, then textual hints such as “Tente de novo em ~5 s” or “try again in 5 s”. Otherwise, retries use exponential backoff from 500 ms to 60 s with 50–100% jitter.
 
 The CLI writes a local SQLite database (default `openfinance.sqlite` beside your config). Sync is incremental: cursors per resource avoid re-fetching unchanged history.
 

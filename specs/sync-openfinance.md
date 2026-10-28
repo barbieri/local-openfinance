@@ -12,15 +12,31 @@ It spaces request starts by at least `OPENFINANCE_MIN_REQUEST_INTERVAL_MS`
 (default 550 ms). Only issuance is paced; responses can remain in flight together.
 This budget does not coordinate separate processes.
 
-HTTP 429, HTTP 500 with explicit provider queue/rate-limit text or code, and
+HTTP 408, HTTP 429, all HTTP 5xx responses (including non-JSON gateway errors), and
 `ok: false` envelopes identifying a rate limit (including `upstream_rate_limit`)
-are retried up to eight total attempts. Other upstream envelopes fail immediately.
+are retried up to `OPENFINANCE_MAX_ATTEMPTS` total attempts (default 12). Other upstream envelopes fail immediately.
 Delays prefer the `Retry-After` header (seconds or HTTP-date), then a finite,
-nonnegative `error.retry_after_ms` body field, then exponential backoff starting
-at 500 ms, doubling to a 30 s cap, with jitter between 50% and 100% of that delay.
+nonnegative `error.retry_after_ms` body field, then a textual duration in seconds
+such as “Tente de novo em ~5 s”, “em ~5s”, or “try again in 5 s”.
+Otherwise, exponential backoff starts at 500 ms, doubling to a 60 s cap,
+with jitter between 50% and 100% of that delay.
 Past header dates are clamped to zero. Retries also pass through request pacing.
 Exhausted HTTP failures retain their status-specific error hints; exhausted
 `ok: false` envelopes retain the `upstream` error kind.
+
+Each outbound request uses `AbortSignal.timeout`, starting after pacing and
+covering response-body consumption. Timeouts and other network-level failures retry
+with exponential backoff within the same attempt budget. Exhaustion retains the
+`network` error kind, final cause, and existing DNS/TLS/proxy or timeout details.
+
+| Environment variable | Default | Constraint |
+| --- | --- | --- |
+| `OPENFINANCE_MIN_REQUEST_INTERVAL_MS` | `550` | Finite nonnegative milliseconds; zero disables pacing |
+| `OPENFINANCE_MAX_ATTEMPTS` | `12` | Finite integer >= 1, including the first attempt |
+| `OPENFINANCE_REQUEST_TIMEOUT_MS` | `30000` | Finite positive milliseconds |
+
+Invalid values use the defaults. Timeout durations round up to whole milliseconds
+and cap at 2,147,483,647 ms, the runtime timer limit.
 
 ## Error reporting
 

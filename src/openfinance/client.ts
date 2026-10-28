@@ -10,7 +10,7 @@ export type OpenFinanceResponse<T> = {
 export type OpenFinanceErrorKind = 'network' | 'http' | 'upstream' | 'invalid_response';
 
 const MAX_ERROR_BODY_CHARS = 2000;
-const MAX_ATTEMPTS = 8;
+const DEFAULT_MAX_ATTEMPTS = 12;
 const RATE_LIMIT_PATTERN = /(?:rate[ _-]?limit|fila cheia)/iu;
 let requestQueue = Promise.resolve();
 let lastRequestAt: number | undefined;
@@ -26,7 +26,12 @@ async function pacedFetch(url: string, options: Parameters<typeof fetch>[1]): Pr
       }
     }
     lastRequestAt = Date.now();
-    return { response: fetch(url, options) };
+    const configuredTimeout = Number(process.env['OPENFINANCE_REQUEST_TIMEOUT_MS'] ?? 30_000);
+    const timeout =
+      Number.isFinite(configuredTimeout) && configuredTimeout > 0
+        ? Math.min(2_147_483_647, Math.ceil(configuredTimeout))
+        : 30_000;
+    return { response: fetch(url, { ...options, signal: AbortSignal.timeout(timeout) }) };
   });
   requestQueue = turn.then(
     () => {},
@@ -72,102 +77,146 @@ export class OpenFinanceClient {
 
   async post<T>(endpoint: string, body: Record<string, unknown> = {}): Promise<T> {
     const url = `${this.#baseUrl}${endpoint.startsWith('/') ? endpoint : `/${endpoint}`}`;
-    return this.#postWithRetry<T>(url, body, 0);
+    return this.#postWithRetry<T>(url, body);
   }
 
-  async #postWithRetry<T>(url: string, body: Record<string, unknown>, attempt: number): Promise<T> {
-    let response: Response;
-    try {
-      response = await pacedFetch(url, {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${this.#apiKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(body),
-      });
-    } catch (error) {
-      throw new OpenFinanceClientError({
-        message: formatNetworkError(url, error),
-        kind: 'network',
-        url,
-        cause: error,
-      });
-    }
-
-    if (!response.ok) {
-      const text = await response.text();
-      if (isRetriableRateLimitResponse(response.status, text) && attempt + 1 < MAX_ATTEMPTS) {
-        await sleep(readRetryAfterMs(response, text, attempt));
-        return this.#postWithRetry<T>(url, body, attempt + 1);
+  async #postWithRetry<T>(url: string, body: Record<string, unknown>): Promise<T> {
+    const maxAttempts = readMaxAttempts();
+    let retryDelay = 0;
+    for (let attempt = 0; ; attempt += 1) {
+      if (attempt > 0) {
+        await sleep(retryDelay);
       }
-      throw new OpenFinanceClientError({
+      let response: Response;
+      let text: string;
+      try {
+        response = await pacedFetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${this.#apiKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(body),
+        });
+        text = await response.text();
+      } catch (error) {
+        if (attempt + 1 < maxAttempts) {
+          retryDelay = backoffMs(attempt);
+          continue;
+        }
+        throw new OpenFinanceClientError({
+          message: formatNetworkError(url, error),
+          kind: 'network',
+          url,
+          cause: error,
+        });
+      }
+
+      const outcome = readResponse<T>(url, response, text);
+      if (outcome.ok) {
+        return outcome.result;
+      }
+      if (!outcome.retryable || attempt + 1 >= maxAttempts) {
+        throw outcome.error;
+      }
+      retryDelay = readRetryAfterMs(response, text, attempt);
+    }
+  }
+}
+
+function readResponse<T>(
+  url: string,
+  response: Response,
+  text: string,
+): { ok: true; result: T } | { ok: false; retryable: boolean; error: OpenFinanceClientError } {
+  if (!response.ok) {
+    return {
+      ok: false,
+      retryable: isRetriableUpstreamStatus(response.status),
+      error: new OpenFinanceClientError({
         message: formatHttpError(url, response.status, response.statusText, text),
         kind: 'http',
         url,
         status: response.status,
         body: text,
-      });
-    }
-
-    const text = await response.text();
-
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (error) {
-      throw new OpenFinanceClientError({
-        message: [
-          `Banco MCP returned non-JSON for POST ${url}.`,
-          `Parse error: ${formatUnknownError(error)}`,
-          formatBodySnippet(text),
-        ]
-          .filter(Boolean)
-          .join('\n'),
-        kind: 'invalid_response',
-        url,
-        status: response.status,
-        body: text,
-        cause: error,
-      });
-    }
-
-    if (!parsed || typeof parsed !== 'object') {
-      throw new OpenFinanceClientError({
-        message: `Banco MCP response for POST ${url} was not a JSON object.`,
-        kind: 'invalid_response',
-        url,
-        status: response.status,
-        body: text,
-      });
-    }
-
-    const envelope = parsed as OpenFinanceResponse<T> & {
-      readonly error?: unknown;
-      readonly message?: unknown;
+      }),
     };
-    if (!envelope.ok) {
-      if (RATE_LIMIT_PATTERN.test(text) && attempt + 1 < MAX_ATTEMPTS) {
-        await sleep(readRetryAfterMs(response, text, attempt));
-        return this.#postWithRetry<T>(url, body, attempt + 1);
-      }
-      throw new OpenFinanceClientError({
+  }
+  const envelope = parseEnvelope<T>(url, response, text);
+  if (!envelope.ok) {
+    return {
+      ok: false,
+      retryable: RATE_LIMIT_PATTERN.test(text),
+      error: new OpenFinanceClientError({
         message: formatUpstreamOkFalse(url, envelope, text),
         kind: 'upstream',
         url,
         status: response.status,
         body: text,
-      });
-    }
-
-    return envelope.result;
+      }),
+    };
   }
+  return { ok: true, result: envelope.result };
+}
+
+function parseEnvelope<T>(
+  url: string,
+  response: Response,
+  text: string,
+): OpenFinanceResponse<T> & { readonly error?: unknown; readonly message?: unknown } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (error) {
+    throw new OpenFinanceClientError({
+      message: [
+        `Banco MCP returned non-JSON for POST ${url}.`,
+        `Parse error: ${formatUnknownError(error)}`,
+        formatBodySnippet(text),
+      ]
+        .filter(Boolean)
+        .join('\n'),
+      kind: 'invalid_response',
+      url,
+      status: response.status,
+      body: text,
+      cause: error,
+    });
+  }
+
+  if (!parsed || typeof parsed !== 'object') {
+    throw new OpenFinanceClientError({
+      message: `Banco MCP response for POST ${url} was not a JSON object.`,
+      kind: 'invalid_response',
+      url,
+      status: response.status,
+      body: text,
+    });
+  }
+
+  return parsed as OpenFinanceResponse<T> & {
+    readonly error?: unknown;
+    readonly message?: unknown;
+  };
+}
+
+function readMaxAttempts(): number {
+  const configured = Number(process.env['OPENFINANCE_MAX_ATTEMPTS'] ?? DEFAULT_MAX_ATTEMPTS);
+  return Number.isFinite(configured) && Number.isInteger(configured) && configured >= 1
+    ? configured
+    : DEFAULT_MAX_ATTEMPTS;
+}
+
+function isTimeoutError(error: unknown): boolean {
+  return error instanceof Error && (error.name === 'TimeoutError' || error.name === 'AbortError');
 }
 
 export function formatNetworkError(url: string, error: unknown): string {
   const detail = formatUnknownError(error);
   const lines = [
-    `Cannot reach Banco MCP (network error) for POST ${url}.`,
+    isTimeoutError(error)
+      ? `Banco MCP request timed out for POST ${url}.`
+      : `Cannot reach Banco MCP (network error) for POST ${url}.`,
     detail,
     'Check OPENFINANCE_BASE_URL, DNS, TLS, proxy settings, and that api.mcp.ai is reachable from this machine.',
   ];
@@ -189,8 +238,8 @@ export function formatHttpError(
   return lines.join('\n');
 }
 
-export function isRetriableRateLimitResponse(status: number, body: string): boolean {
-  return status === 429 || (status === 500 && RATE_LIMIT_PATTERN.test(body));
+export function isRetriableUpstreamStatus(status: number): boolean {
+  return status === 408 || status === 429 || (status >= 500 && status <= 599);
 }
 
 function formatUpstreamOkFalse(
@@ -301,6 +350,10 @@ function readRetryAfterMs(response: Response, body: string, attempt: number): nu
       return Math.max(0, delay);
     }
   }
+  return readBodyRetryHintMs(body) ?? readTextRetryHintMs(body) ?? backoffMs(attempt);
+}
+
+function readBodyRetryHintMs(body: string): number | null {
   try {
     const parsed: unknown = JSON.parse(body);
     if (parsed && typeof parsed === 'object' && 'error' in parsed) {
@@ -313,9 +366,27 @@ function readRetryAfterMs(response: Response, body: string, attempt: number): nu
       }
     }
   } catch {
-    // Non-JSON errors still use the computed backoff.
+    // Non-JSON errors can still include a textual retry hint.
   }
-  return Math.min(30_000, 500 * 2 ** attempt) * (0.5 + Math.random() * 0.5);
+  return null;
+}
+
+function readTextRetryHintMs(body: string): number | null {
+  const hint =
+    /\b(?:de novo em|em|try again in)\s*~?\s*(\d+(?:\.\d+)?)\s*s(?:econds?|egundos?)?\b/iu.exec(
+      body,
+    );
+  if (hint) {
+    const delay = Number(hint[1]) * 1000;
+    if (Number.isFinite(delay)) {
+      return delay;
+    }
+  }
+  return null;
+}
+
+function backoffMs(attempt: number): number {
+  return Math.min(60_000, 500 * 2 ** attempt) * (0.5 + Math.random() * 0.5);
 }
 
 function sleep(ms: number): Promise<void> {

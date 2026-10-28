@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   formatHttpError,
   formatNetworkError,
-  isRetriableRateLimitResponse,
+  isRetriableUpstreamStatus,
   OpenFinanceClientError,
 } from '../src/openfinance/client.js';
 import { formatUnknownError } from '../src/utils/format-error.js';
@@ -29,15 +29,15 @@ describe('formatUnknownError', () => {
 });
 
 describe('OpenFinanceClient error formatting', () => {
-  it('recognizes Banco MCP queue-limit errors surfaced as HTTP 500 as retriable', () => {
-    expect(isRetriableRateLimitResponse(429, '')).toBe(true);
-    expect(
-      isRetriableRateLimitResponse(
-        500,
-        'Pluggy rate-limit: 2 req/s por aplicação excedido (fila cheia).',
-      ),
-    ).toBe(true);
-    expect(isRetriableRateLimitResponse(500, 'upstream service failure')).toBe(false);
+  it.each([408, 429, ...Array.from({ length: 100 }, (_, index) => 500 + index)])(
+    'recognizes transient HTTP %s as retriable',
+    (status) => {
+      expect(isRetriableUpstreamStatus(status)).toBe(true);
+    },
+  );
+
+  it.each([200, 400, 401, 403, 404, 499, 600])('does not retry HTTP %s', (status) => {
+    expect(isRetriableUpstreamStatus(status)).toBe(false);
   });
 
   it('formats network failures with URL and action hints', () => {
