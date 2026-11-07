@@ -307,7 +307,7 @@ function TriageTransactionPanel({
   }
 
   return (
-    <div className="mt-auto rounded-lg border border-border bg-background p-4 pb-0 shadow-sm">
+    <div className="flex flex-1 flex-col rounded-lg border border-border bg-background p-4 pb-0 shadow-sm">
       <TransactionEditPanel
         transaction={transaction}
         mode="triage"

@@ -191,7 +191,7 @@ function TransactionEditPanelContent({
   const isDetailMode = mode === 'detail';
 
   return (
-    <article className="flex min-w-0 flex-col gap-4">
+    <article className="flex min-w-0 flex-1 flex-col gap-4">
       {showHeader ? (
         <header className="border-b border-border pb-3">
           <TransactionEditTitle transaction={transaction} meta={titleMeta} />
@@ -217,6 +217,7 @@ function TransactionEditPanelContent({
         onUnlinkTransfer={(groupId) => unlinkMutation.mutate(groupId)}
         unlinkPending={unlinkMutation.isPending}
       />
+      {mode === 'triage' ? <div className="flex-1" /> : null}
       <TransactionEditFooter
         mode={mode}
         editable={editable}
